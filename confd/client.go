@@ -20,6 +20,8 @@ type Conn struct {
 	id       int64  // json rpc counter
 	err      error  // error cache
 	mutex    sync.Mutex
+	write    sync.Mutex // prevent multiple write transactions
+	read     sync.Mutex // prevent multiple read transactions
 }
 
 // Params can be anything that renders to json
