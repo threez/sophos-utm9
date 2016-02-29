@@ -1,18 +1,20 @@
 package confd
 
-type ConfdExport struct {
-	Write  ConfdBool `json:"write"`
-	Deny   ConfdBool `json:"deny"`
-	Module string    `json:"module"`
-	Class  string    `json:"class"`
-	Rights []string  `json:"rights"`
-	Doc    string    `json:"doc"`
+// Export represents an exported confd function
+type Export struct {
+	Write  Bool     `json:"write"`
+	Deny   Bool     `json:"deny"`
+	Module string   `json:"module"`
+	Class  string   `json:"class"`
+	Rights []string `json:"rights"`
+	Doc    string   `json:"doc"`
 }
 
-func (c *ConfdConn) Exports() (map[string]ConfdExport, error) {
+// Exports returns all available exports (see definition of export)
+func (c *Conn) Exports() (map[string]Export, error) {
 	exports := new(struct {
-		ConfdResponse
-		Result map[string]ConfdExport `json:"result"`
+		Response
+		Result map[string]Export `json:"result"`
 	})
 	err := c.Request("get_exports", exports, nil)
 	return exports.Result, err

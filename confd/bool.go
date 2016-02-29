@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-// Confd bools are not true or false but can be strings, arrays, maps, and ints
-type ConfdBool bool
+// Bool are not true or false but can be strings, arrays, maps, and ints
+type Bool bool
 
-// Handles unmarshaling of confd bools
-func (value *ConfdBool) UnmarshalJSON(bytes []byte) (err error) {
+// UnmarshalJSON handles unmarshaling of confd bools
+func (b *Bool) UnmarshalJSON(bytes []byte) (err error) {
 	var decoded interface{}
 	err = json.Unmarshal(bytes, &decoded)
 	if err != nil {
@@ -18,12 +18,27 @@ func (value *ConfdBool) UnmarshalJSON(bytes []byte) (err error) {
 	switch tv := decoded.(type) {
 	case string:
 		newValue := strings.Compare(tv, "") == 0
-		*value = ConfdBool(newValue)
+		*b = Bool(newValue)
 	case int:
 		newValue := tv == 1
-		*value = ConfdBool(newValue)
+		*b = Bool(newValue)
 	default:
-		*value = true
+		*b = true
 	}
 	return nil
+}
+
+// MarshalJSON marshals the bool as confd
+func (b *Bool) MarshalJSON() (bytes []byte, err error) {
+	value := BoolValue(bool(*b))
+	bytes, err = json.Marshal(value)
+	return
+}
+
+// BoolValue returns the confd representation of a bool
+func BoolValue(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

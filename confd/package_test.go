@@ -5,7 +5,7 @@ import (
 )
 
 func TestExports(t *testing.T) {
-	conn := NewConfdConn()
+	conn := NewConn()
 	err := conn.Connect()
 	if err != nil {
 		t.Error(err)
