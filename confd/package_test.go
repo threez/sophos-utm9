@@ -5,11 +5,8 @@ import (
 )
 
 func TestExports(t *testing.T) {
-	conn := NewConn()
-	err := conn.Connect()
-	if err != nil {
-		t.Error(err)
-	}
+	conn := NewDefaultConn()
+	defer conn.Close()
 	exports, err := conn.Exports()
 	if err != nil {
 		t.Error(err)

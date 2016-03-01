@@ -1,25 +1,29 @@
 package confd
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // LocalConnection is used on the box
-const LocalConnection = "http://127.0.0.1:4472/"
+const LocalConnection = "127.0.0.1:4472"
 
 // Conn is the confd connection object
 type Conn struct {
-	Client *http.Client
-	URL    string
-	id     int64 // json rpc counter
-	err    error // error cache
-	mutex  sync.Mutex
-	write  sync.Mutex // prevent multiple write transactions
-	read   sync.Mutex // prevent multiple read transactions
+	conn    *net.TCPConn
+	URL     string
+	id      int64 // json rpc counter
+	err     error // error cache
+	Timeout time.Duration
+	mutex   sync.Mutex
+	write   sync.Mutex // prevent multiple write transactions
+	read    sync.Mutex // prevent multiple read transactions
 }
 
 // Params can be anything that renders to json
@@ -48,13 +52,9 @@ type Request struct {
 
 // NewConn creates a new confd connection (is not acually connecting)
 func NewConn(URL string) *Conn {
-	tr := &http.Transport{
-		DisableCompression:  true,
-		MaxIdleConnsPerHost: 8,
-	}
 	return &Conn{
-		URL:    URL,
-		Client: &http.Client{Transport: tr},
+		URL:     URL,
+		Timeout: time.Second * 5,
 	}
 }
 
@@ -62,13 +62,6 @@ func NewConn(URL string) *Conn {
 // http://127.0.0.1:4472/ (LocalConnection)
 func NewDefaultConn() *Conn {
 	return NewConn(LocalConnection)
-}
-
-// Connect creates a new confd session by calling new and get_SID confd calls
-func (c *Conn) Connect() error {
-	c.SimpleRequest("new", nil)
-	c.SimpleRequest("get_SID", nil)
-	return c.Err()
 }
 
 // SimpleRequest sends a simple request (untyped response) to the confd
@@ -84,9 +77,14 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 	if c.err != nil {
 		return c.err
 	}
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	setAndReturnErr := func(err error) error { c.err = err; return err }
+	setAndReturnErr := func(err error) error {
+		if c.conn != nil {
+			c.conn.Close()
+			c.conn = nil
+		}
+		c.err = err
+		return err
+	}
 
 	// request
 	data := Request{method, params, c.id}
@@ -94,12 +92,40 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 	err := json.NewEncoder(&buf).Encode(&data)
 	c.id++
 
+	// connect to server if not done yet
+	if c.conn == nil {
+		conn, err := net.Dial("tcp", c.URL)
+		if err != nil {
+			return setAndReturnErr(err)
+		}
+		c.conn = conn.(*net.TCPConn)
+		c.connect() // initalize the session
+	}
+
+	// send request
+	req := fmt.Sprintf("POST / HTTP/1.1\r\n"+
+		"Content-Type: application/json\r\n"+
+		"Content-Length: %d\r\n\r\n%s", buf.Len(), buf.String())
+
 	// send to remote side and recieve response
-	resp, err := c.Client.Post(c.URL, "application/json", &buf)
+	c.mutex.Lock()
+	_, err = c.conn.Write([]byte(req[:]))
 	if err != nil {
 		return setAndReturnErr(err)
 	}
-	defer resp.Body.Close()
+
+	err = c.conn.SetReadDeadline(time.Now().Add(c.Timeout))
+	if err != nil {
+		return setAndReturnErr(err)
+	}
+
+	// read response
+	reader := bufio.NewReader(c.conn)
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		return setAndReturnErr(err)
+	}
+	c.mutex.Unlock()
 
 	// decode response
 	dec := json.NewDecoder(resp.Body)
@@ -118,6 +144,13 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 	return nil
 }
 
+// Close the confd connection
+func (c *Conn) Close() error {
+	c.SimpleRequest("disconnect", nil)
+	c.err = c.conn.Close()
+	return c.Err()
+}
+
 // Err returns the last cached error value
 func (c *Conn) Err() error {
 	return c.err
@@ -126,4 +159,11 @@ func (c *Conn) Err() error {
 // ResetErr resets the set error value of the connection
 func (c *Conn) ResetErr() {
 	c.err = nil
+}
+
+// Connect creates a new confd session by calling new and get_SID confd calls
+func (c *Conn) connect() error {
+	c.SimpleRequest("new", nil)
+	c.SimpleRequest("get_SID", nil)
+	return c.Err()
 }
