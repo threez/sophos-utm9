@@ -8,20 +8,18 @@ import (
 	"sync"
 )
 
+// LocalConnection is used on the box
+const LocalConnection = "http://127.0.0.1:4472/"
+
 // Conn is the confd connection object
 type Conn struct {
-	Host     string
-	Port     int16
-	user     string // currently not used
-	passwd   string // currently not used
-	facility string // currently not used
-	Client   *http.Client
-	session  string // currently not used
-	id       int64  // json rpc counter
-	err      error  // error cache
-	mutex    sync.Mutex
-	write    sync.Mutex // prevent multiple write transactions
-	read     sync.Mutex // prevent multiple read transactions
+	Client *http.Client
+	URL    string
+	id     int64 // json rpc counter
+	err    error // error cache
+	mutex  sync.Mutex
+	write  sync.Mutex // prevent multiple write transactions
+	read   sync.Mutex // prevent multiple read transactions
 }
 
 // Params can be anything that renders to json
@@ -49,16 +47,21 @@ type Request struct {
 }
 
 // NewConn creates a new confd connection (is not acually connecting)
-func NewConn() *Conn {
+func NewConn(URL string) *Conn {
 	tr := &http.Transport{
 		DisableCompression:  true,
 		MaxIdleConnsPerHost: 8,
 	}
 	return &Conn{
-		Host:   "127.0.0.1",
-		Port:   4472,
+		URL:    URL,
 		Client: &http.Client{Transport: tr},
 	}
+}
+
+// NewDefaultConn creates a new confd connection (is not acually connecting) to
+// http://127.0.0.1:4472/ (LocalConnection)
+func NewDefaultConn() *Conn {
+	return NewConn(LocalConnection)
 }
 
 // Connect creates a new confd session by calling new and get_SID confd calls
@@ -92,8 +95,7 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 	c.id++
 
 	// send to remote side and recieve response
-	url := fmt.Sprintf("http://%s:%d/", c.Host, c.Port)
-	resp, err := c.Client.Post(url, "application/json", &buf)
+	resp, err := c.Client.Post(c.URL, "application/json", &buf)
 	if err != nil {
 		return setAndReturnErr(err)
 	}
