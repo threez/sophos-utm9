@@ -5,25 +5,58 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
+// DefaultTimeout confd workers will kill the process after 60 seconds
+const DefaultTimeout = time.Second * 60
+
+// DefaultFacility system can only be used for local connections
+const DefaultFacility = "system"
+
+const anonymousUser = ""
+const anonymousPassword = ""
+const localhost = "127.0.0.1"
+
+// DefaultPort of the confd listener
+const DefaultPort = 4472
+
 // LocalConnection is used on the box
-const LocalConnection = "127.0.0.1:4472"
+var LocalConnection = fmt.Sprintf("http://%s:%s@%s:%d/%s", anonymousUser,
+	anonymousPassword, localhost, DefaultPort, DefaultFacility)
+
+// Options define confd connection options
+type Options struct {
+	// Name of the client default os.Argv[0] (used for logging, on the server)
+	Name     string `json:"client,omitempty"`
+	Facility string `json:"facility,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	// SID can be a string (login) or number (anonymous)
+	SID interface{} `json:",omitempty"`
+}
 
 // Conn is the confd connection object
 type Conn struct {
-	conn    *net.TCPConn
-	URL     string
-	id      int64 // json rpc counter
-	err     error // error cache
-	Timeout time.Duration
-	mutex   sync.Mutex
-	write   sync.Mutex // prevent multiple write transactions
-	read    sync.Mutex // prevent multiple read transactions
+	conn        *net.TCPConn
+	URL         *url.URL
+	id          int64 // json rpc counter
+	err         error // error cache
+	Logger      *log.Logger
+	Timeout     time.Duration
+	mutex       sync.Mutex
+	write       sync.Mutex // prevent multiple write transactions
+	read        sync.Mutex // prevent multiple read transactions
+	Options     Options
+	LastRequest time.Time // last time a request was done
 }
 
 // Params can be anything that renders to json
@@ -51,17 +84,48 @@ type Request struct {
 }
 
 // NewConn creates a new confd connection (is not acually connecting)
-func NewConn(URL string) *Conn {
-	return &Conn{
-		URL:     URL,
-		Timeout: time.Second * 5,
+func NewConn(URL string) (conn *Conn, err error) {
+	u, err := url.Parse(URL)
+	if err != nil {
+		return
 	}
+
+	username := u.User.Username()
+	if username == "" {
+		username = anonymousUser
+	}
+
+	password, _ := u.User.Password()
+	if password == "" {
+		password = anonymousPassword
+	}
+
+	facility := strings.Replace(u.Path, "/", "", -1)
+	if facility == DefaultFacility {
+		facility = ""
+	}
+
+	conn = &Conn{
+		URL:     u,
+		Timeout: DefaultTimeout,
+		Logger:  nil,
+		Options: Options{
+			Name:     os.Args[0],
+			Facility: facility,
+			Username: username,
+			Password: password,
+			SID:      nil,
+		},
+	}
+	return
 }
 
-// NewDefaultConn creates a new confd connection (is not acually connecting) to
-// http://127.0.0.1:4472/ (LocalConnection)
-func NewDefaultConn() *Conn {
-	return NewConn(LocalConnection)
+// NewAnonymousConn creates a new confd connection (is not acually connecting)
+// to http://127.0.0.1:4472/ (LocalConnection)
+func NewAnonymousConn() (conn *Conn) {
+	// error is only for url parsing which can not happen here, therefore ignored
+	conn, _ = NewConn(LocalConnection)
+	return conn
 }
 
 // SimpleRequest sends a simple request (untyped response) to the confd
@@ -78,6 +142,7 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 		return c.err
 	}
 	setAndReturnErr := func(err error) error {
+		c.Logger.Printf("Err: %v", err)
 		if c.conn != nil {
 			c.conn.Close()
 			c.conn = nil
@@ -94,11 +159,13 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 
 	// connect to server if not done yet
 	if c.conn == nil {
-		conn, err := net.Dial("tcp", c.URL)
+		c.logf("Info: Connect to %s", c.URL.Host)
+		conn, err := net.Dial("tcp", c.URL.Host)
 		if err != nil {
 			return setAndReturnErr(err)
 		}
 		c.conn = conn.(*net.TCPConn)
+		c.ResetErr()
 		c.connect() // initalize the session
 	}
 
@@ -107,28 +174,43 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 		"Content-Type: application/json\r\n"+
 		"Content-Length: %d\r\n\r\n%s", buf.Len(), buf.String())
 
+	var reader *bufio.Reader
+	var resp *http.Response
+
 	// send to remote side and recieve response
 	c.mutex.Lock()
-	_, err = c.conn.Write([]byte(req[:]))
+
+	err = c.conn.SetDeadline(time.Now().Add(c.Timeout))
 	if err != nil {
-		return setAndReturnErr(err)
+		goto unlock
 	}
 
-	err = c.conn.SetReadDeadline(time.Now().Add(c.Timeout))
+	c.logf("Info: Send request %s", req)
+	_, err = c.conn.Write([]byte(req[:]))
 	if err != nil {
-		return setAndReturnErr(err)
+		goto unlock
 	}
 
 	// read response
-	reader := bufio.NewReader(c.conn)
-	resp, err := http.ReadResponse(reader, nil)
+	reader = bufio.NewReader(c.conn)
+	resp, err = http.ReadResponse(reader, nil)
+	c.LastRequest = time.Now()
+
+unlock:
+	c.mutex.Unlock()
 	if err != nil {
 		return setAndReturnErr(err)
 	}
-	c.mutex.Unlock()
 
 	// decode response
-	dec := json.NewDecoder(resp.Body)
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return setAndReturnErr(err)
+	}
+	respBuf := bytes.NewBuffer(respBytes)
+	resp.Body.Close()
+	dec := json.NewDecoder(respBuf)
+	c.logf("Info: Decoded response %s", respBuf.String())
 	err = dec.Decode(result)
 	if err != nil {
 		return setAndReturnErr(err)
@@ -145,10 +227,17 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 }
 
 // Close the confd connection
-func (c *Conn) Close() error {
-	c.SimpleRequest("disconnect", nil)
-	c.err = c.conn.Close()
-	return c.Err()
+func (c *Conn) Close() (err error) {
+	if c.conn != nil {
+		c.SimpleRequest("detach", nil)
+		err = c.conn.Close()
+		c.conn = nil
+	}
+	if err == nil {
+		err = c.Err()
+	}
+	c.ResetErr()
+	return
 }
 
 // Err returns the last cached error value
@@ -163,7 +252,16 @@ func (c *Conn) ResetErr() {
 
 // Connect creates a new confd session by calling new and get_SID confd calls
 func (c *Conn) connect() error {
-	c.SimpleRequest("new", nil)
-	c.SimpleRequest("get_SID", nil)
+	c.SimpleRequest("new", []interface{}{c.Options})
+	if c.Options.SID == nil {
+		// if we got a sid we will use it next time
+		c.Options.SID, _ = c.SimpleRequest("get_SID", nil)
+	}
 	return c.Err()
+}
+
+func (c *Conn) logf(format string, args ...interface{}) {
+	if c.Logger != nil {
+		c.Logger.Printf(format, args...)
+	}
 }
