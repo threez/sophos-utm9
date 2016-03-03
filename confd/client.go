@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -49,21 +48,19 @@ type Conn struct {
 	conn        *net.TCPConn
 	URL         *url.URL
 	id          int64 // json rpc counter
-	err         error // error cache
 	Logger      *log.Logger
 	Timeout     time.Duration
-	mutex       sync.Mutex
-	write       sync.Mutex // prevent multiple write transactions
-	read        sync.Mutex // prevent multiple read transactions
+	rwlock      sync.RWMutex // prevent multiple write/read transactions
 	Options     Options
 	LastRequest time.Time // last time a request was done
+	sync.Mutex
 }
 
 // Response is used for custom response handling
 // just include the type in your types to handle errors
 type Response struct {
-	Error *string `json:"error"` // pointer since it can be omitted
-	ID    int64   `json:"id"`
+	Error error `json:"error"` // pointer since it can be omitted
+	ID    int64 `json:"id"`
 }
 
 // SimpleResponse is used for SimpleResult requests, the return
@@ -78,6 +75,23 @@ type Request struct {
 	Method string      `json:"method"`
 	Params interface{} `json:"params"`
 	ID     int64       `json:"id"`
+}
+
+// HTTP retruns an http request as bytes
+func (r *Request) HTTP(host string) (*http.Request, error) {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(r)
+	if err != nil {
+		return nil, err
+	}
+	ru, err := http.NewRequest("POST", "/", &buf)
+	if err != nil {
+		return nil, err
+	}
+	ru.URL.Host = host
+	ru.Header.Set("Content-Type", "application/json")
+	ru.Header.Set("User-Agent", "")
+	return ru, nil
 }
 
 // NewConn creates a new confd connection (is not acually connecting)
@@ -136,131 +150,117 @@ func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{},
 
 // Request allows to send request with typed (parsed with json) responses
 func (c *Conn) Request(method string, result interface{}, params ...interface{}) error {
-	// skip anything on error
-	if c.err != nil {
-		return c.err
+	// make sure we have a connection to the server
+	err := c.connect() // initalize the session
+	if err != nil {
+		return err
 	}
-	setAndReturnErr := func(err error) error {
-		c.Logger.Printf("Err: %v", err)
-		if c.conn != nil {
-			c.conn.Close()
-			c.conn = nil
-		}
-		c.err = err
+
+	reportErrorAndCloseConnection := func(err error) error {
+		c.Logger.Printf("Error: %v", err)
+		c.Close()
 		return err
 	}
 
 	// request
-	data := Request{method, params, c.id}
-	var buf bytes.Buffer
-	err := json.NewEncoder(&buf).Encode(&data)
+	r := Request{method, params, c.id}
 	c.id++
-
-	// connect to server if not done yet
-	if c.conn == nil {
-		c.logf("Connect to %s", c.safeURL())
-		conn, err := net.Dial("tcp", c.URL.Host)
-		if err != nil {
-			return setAndReturnErr(err)
-		}
-		c.conn = conn.(*net.TCPConn)
-		c.ResetErr()
-		c.connect() // initalize the session
+	c.logf("Send request %v", r)
+	req, err := r.HTTP(c.URL.Host)
+	if err != nil {
+		return err
 	}
 
 	// send request
-	req := fmt.Sprintf("POST / HTTP/1.1\r\n"+
-		"Host: %s\r\n"+
-		"Content-Type: application/json\r\n"+
-		"Content-Length: %d\r\n\r\n%s", c.URL.Host, buf.Len(), buf.String())
-
-	var reader *bufio.Reader
-	var resp *http.Response
-
-	// send to remote side and recieve response
-	c.mutex.Lock()
-
-	err = c.conn.SetDeadline(time.Now().Add(c.Timeout))
+	resp, err := c.doRequest(req)
 	if err != nil {
-		goto unlock
+		return reportErrorAndCloseConnection(err)
 	}
-
-	c.logf("Send request %s", buf.String())
-	_, err = c.conn.Write([]byte(req[:]))
-	if err != nil {
-		goto unlock
-	}
-
-	// read response
-	reader = bufio.NewReader(c.conn)
-	resp, err = http.ReadResponse(reader, nil)
 	c.LastRequest = time.Now()
 
-unlock:
-	c.mutex.Unlock()
-	if err != nil {
-		return setAndReturnErr(err)
-	}
-
 	// decode response
-	respBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return setAndReturnErr(err)
-	}
-	respBuf := bytes.NewBuffer(respBytes)
-	resp.Body.Close()
-	dec := json.NewDecoder(respBuf)
-	c.logf("Decode response %s", respBuf.String())
+	defer resp.Body.Close()
+	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(result)
 	if err != nil {
-		return setAndReturnErr(err)
+		return reportErrorAndCloseConnection(err)
 	}
 
+	// General error handling
+	c.logf("Received response %v", result)
 	switch r := result.(type) {
-	case Response:
-		setAndReturnErr(fmt.Errorf("Confd error: %s", *r.Error))
-	case SimpleResponse:
-		setAndReturnErr(fmt.Errorf("Confd error: %s", *r.Error))
+	case *Response:
+		if r.Error != nil {
+			return reportErrorAndCloseConnection(r.Error)
+		}
+	case *SimpleResponse:
+		if r.Error != nil {
+			return reportErrorAndCloseConnection(r.Error)
+		}
 	}
 
 	return nil
 }
 
-// Close the confd connection
-func (c *Conn) Close() (err error) {
-	c.logf("Disconnect from %s", c.safeURL())
-	if c.conn != nil {
-		c.SimpleRequest("detach")
-		if c.conn != nil {
-			err = c.conn.Close()
-		}
-		c.conn = nil
+func (c *Conn) doRequest(req *http.Request) (resp *http.Response, err error) {
+	c.Lock()
+	defer c.Unlock()
+
+	// send to remote side and recieve response
+	err = c.conn.SetDeadline(time.Now().Add(c.Timeout))
+	if err != nil {
+		return
 	}
-	if err == nil {
-		err = c.Err()
+
+	err = req.Write(c.conn)
+	if err != nil {
+		return
 	}
-	c.ResetErr()
+
+	// read response
+	resp, err = http.ReadResponse(bufio.NewReader(c.conn), nil)
+
 	return
 }
 
-// Err returns the last cached error value
-func (c *Conn) Err() error {
-	return c.err
-}
-
-// ResetErr resets the set error value of the connection
-func (c *Conn) ResetErr() {
-	c.err = nil
+// Close the confd connection
+func (c *Conn) Close() (err error) {
+	if c.conn != nil {
+		c.logf("Disconnect from %s", c.safeURL())
+		_, _ = c.SimpleRequest("detach") // ignore if we can't detach
+		if c.conn != nil {
+			c.Lock()
+			err = c.conn.Close()
+			c.Unlock()
+		}
+		c.conn = nil
+	}
+	return
 }
 
 // Connect creates a new confd session by calling new and get_SID confd calls
-func (c *Conn) connect() error {
-	c.SimpleRequest("new", c.Options)
-	if c.Options.SID == nil {
-		// if we got a sid we will use it next time
-		c.Options.SID, _ = c.SimpleRequest("get_SID")
+func (c *Conn) connect() (err error) {
+	if c.conn != nil {
+		return
 	}
-	return c.Err()
+	c.logf("Connect to %s", c.safeURL())
+	c.Lock()
+	conn, err := net.Dial("tcp", c.URL.Host)
+	if err != nil {
+		c.logf("Unable to connect %v", err)
+		return
+	}
+	c.conn = conn.(*net.TCPConn)
+	c.Unlock()
+	_, err = c.SimpleRequest("new", c.Options)
+	if err == nil && c.Options.SID == nil {
+		// if we got a sid we will use it next time
+		c.Options.SID, err = c.SimpleRequest("get_SID")
+	}
+	if err != nil {
+		c.logf("Unable to create session %v", err)
+	}
+	return
 }
 
 func (c *Conn) logf(format string, args ...interface{}) {

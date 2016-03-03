@@ -12,10 +12,13 @@ type Export struct {
 
 // Exports returns all available exports (see definition of export)
 func (c *Conn) Exports() (map[string]Export, error) {
-	exports := new(struct {
+	response := new(struct {
 		Response
 		Result map[string]Export `json:"result"`
 	})
-	err := c.Request("get_exports", exports)
-	return exports.Result, err
+	err := c.Request("get_exports", response)
+	if err == nil && response.Error != nil {
+		err = response.Error
+	}
+	return response.Result, err
 }

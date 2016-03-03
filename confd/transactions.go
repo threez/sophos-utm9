@@ -13,7 +13,7 @@ type readTransaction struct{ *Conn }
 
 // BeginReadTransaction starts new read transaction
 func (c *Conn) BeginReadTransaction() (Transaction, error) {
-	c.read.Lock()
+	c.rwlock.RLock()
 	_, err := c.SimpleRequest("freeze")
 	if err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func (c *Conn) BeginReadTransaction() (Transaction, error) {
 
 // BeginWriteTransaction starts new write transaction
 func (c *Conn) BeginWriteTransaction() (Transaction, error) {
-	c.write.Lock()
+	c.rwlock.Lock()
 	_, err := c.SimpleRequest("lock")
 	if err != nil {
 		return nil, err
@@ -33,24 +33,24 @@ func (c *Conn) BeginWriteTransaction() (Transaction, error) {
 
 func (t *readTransaction) Rollback() (err error) {
 	_, err = t.SimpleRequest("thaw")
-	t.read.Unlock()
+	t.rwlock.RUnlock()
 	return
 }
 
 func (t *readTransaction) Commit() (err error) {
 	_, err = t.SimpleRequest("thaw")
-	t.read.Unlock()
+	t.rwlock.RUnlock()
 	return
 }
 
 func (t *writeTransaction) Rollback() (err error) {
 	_, err = t.SimpleRequest("unlock")
-	t.write.Unlock()
+	t.rwlock.Unlock()
 	return
 }
 
 func (t *writeTransaction) Commit() (err error) {
 	_, err = t.SimpleRequest("commit")
-	t.write.Unlock()
+	t.rwlock.Unlock()
 	return
 }
