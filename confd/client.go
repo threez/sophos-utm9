@@ -59,9 +59,6 @@ type Conn struct {
 	LastRequest time.Time // last time a request was done
 }
 
-// Params can be anything that renders to json
-type Params interface{}
-
 // Response is used for custom response handling
 // just include the type in your types to handle errors
 type Response struct {
@@ -89,15 +86,17 @@ func NewConn(URL string) (conn *Conn, err error) {
 	if err != nil {
 		return
 	}
+	username := anonymousUser
+	password := anonymousPassword
 
-	username := u.User.Username()
-	if username == "" {
-		username = anonymousUser
-	}
+	if u.User != nil {
+		if u.User.Username() != "" {
+			username = u.User.Username()
+		}
 
-	password, _ := u.User.Password()
-	if password == "" {
-		password = anonymousPassword
+		if passwd, _ := u.User.Password(); passwd != "" {
+			password = passwd
+		}
 	}
 
 	facility := strings.Replace(u.Path, "/", "", -1)
@@ -129,14 +128,14 @@ func NewAnonymousConn() (conn *Conn) {
 }
 
 // SimpleRequest sends a simple request (untyped response) to the confd
-func (c *Conn) SimpleRequest(method string, params Params) (interface{}, error) {
+func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{}, error) {
 	resp := &SimpleResponse{}
-	err := c.Request(method, resp, params)
+	err := c.Request(method, resp, params...)
 	return resp.Result, err
 }
 
 // Request allows to send request with typed (parsed with json) responses
-func (c *Conn) Request(method string, result interface{}, params Params) error {
+func (c *Conn) Request(method string, result interface{}, params ...interface{}) error {
 	// skip anything on error
 	if c.err != nil {
 		return c.err
@@ -159,7 +158,7 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 
 	// connect to server if not done yet
 	if c.conn == nil {
-		c.logf("Info: Connect to %s", c.URL.Host)
+		c.logf("Connect to %s", c.safeURL())
 		conn, err := net.Dial("tcp", c.URL.Host)
 		if err != nil {
 			return setAndReturnErr(err)
@@ -171,8 +170,9 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 
 	// send request
 	req := fmt.Sprintf("POST / HTTP/1.1\r\n"+
+		"Host: %s\r\n"+
 		"Content-Type: application/json\r\n"+
-		"Content-Length: %d\r\n\r\n%s", buf.Len(), buf.String())
+		"Content-Length: %d\r\n\r\n%s", c.URL.Host, buf.Len(), buf.String())
 
 	var reader *bufio.Reader
 	var resp *http.Response
@@ -185,7 +185,7 @@ func (c *Conn) Request(method string, result interface{}, params Params) error {
 		goto unlock
 	}
 
-	c.logf("Info: Send request %s", req)
+	c.logf("Send request %s", buf.String())
 	_, err = c.conn.Write([]byte(req[:]))
 	if err != nil {
 		goto unlock
@@ -210,7 +210,7 @@ unlock:
 	respBuf := bytes.NewBuffer(respBytes)
 	resp.Body.Close()
 	dec := json.NewDecoder(respBuf)
-	c.logf("Info: Decoded response %s", respBuf.String())
+	c.logf("Decode response %s", respBuf.String())
 	err = dec.Decode(result)
 	if err != nil {
 		return setAndReturnErr(err)
@@ -228,9 +228,12 @@ unlock:
 
 // Close the confd connection
 func (c *Conn) Close() (err error) {
+	c.logf("Disconnect from %s", c.safeURL())
 	if c.conn != nil {
-		c.SimpleRequest("detach", nil)
-		err = c.conn.Close()
+		c.SimpleRequest("detach")
+		if c.conn != nil {
+			err = c.conn.Close()
+		}
 		c.conn = nil
 	}
 	if err == nil {
@@ -252,10 +255,10 @@ func (c *Conn) ResetErr() {
 
 // Connect creates a new confd session by calling new and get_SID confd calls
 func (c *Conn) connect() error {
-	c.SimpleRequest("new", []interface{}{c.Options})
+	c.SimpleRequest("new", c.Options)
 	if c.Options.SID == nil {
 		// if we got a sid we will use it next time
-		c.Options.SID, _ = c.SimpleRequest("get_SID", nil)
+		c.Options.SID, _ = c.SimpleRequest("get_SID")
 	}
 	return c.Err()
 }
@@ -264,4 +267,11 @@ func (c *Conn) logf(format string, args ...interface{}) {
 	if c.Logger != nil {
 		c.Logger.Printf(format, args...)
 	}
+}
+
+func (c *Conn) safeURL() string {
+	if c.Options.Password != "" {
+		return strings.Replace(c.URL.String(), c.Options.Password, "********", 1)
+	}
+	return c.URL.String()
 }

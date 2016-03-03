@@ -26,9 +26,9 @@ func TestExports(t *testing.T) {
 
 	err = conn.Close()
 	assert.NoError(t, err)
-	_, err = conn.SimpleRequest("get_object", []string{"REF_AnonymousUser"})
+	_, err = conn.SimpleRequest("get_object", "REF_AnonymousUser")
 	assert.NoError(t, err)
-	sid, err := conn.SimpleRequest("get_SID", nil)
+	sid, err := conn.SimpleRequest("get_SID")
 	assert.NoError(t, err)
 	assert.Equal(t, sid, conn.Options.SID)
 }

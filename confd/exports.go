@@ -16,6 +16,6 @@ func (c *Conn) Exports() (map[string]Export, error) {
 		Response
 		Result map[string]Export `json:"result"`
 	})
-	err := c.Request("get_exports", exports, nil)
+	err := c.Request("get_exports", exports)
 	return exports.Result, err
 }
