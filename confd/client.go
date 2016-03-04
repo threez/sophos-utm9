@@ -59,22 +59,28 @@ type Conn struct {
 // Response is used for custom response handling
 // just include the type in your types to handle errors
 type Response struct {
-	Error error `json:"error"` // pointer since it can be omitted
-	ID    int64 `json:"id"`
+	Error  error            `json:"error"` // pointer since it can be omitted
+	ID     int64            `json:"id"`
+	Result *json.RawMessage `json:"result"`
 }
 
-// SimpleResponse is used for SimpleResult requests, the return
-// value is untyped
-type SimpleResponse struct {
-	Response
-	Result interface{} `json:"result"`
+func (r *Response) String() string {
+	if r.Error != nil {
+		return fmt.Sprintf("[%d] Error: %s", r.ID, r.Error)
+	}
+	return fmt.Sprintf("[%d] Result: %s", r.ID, *r.Result)
 }
 
 // Request is used to construct requests
 type Request struct {
-	Method string      `json:"method"`
-	Params interface{} `json:"params"`
-	ID     int64       `json:"id"`
+	Method string        `json:"method"`
+	Params []interface{} `json:"params"`
+	ID     int64         `json:"id"`
+}
+
+func (r *Request) String() string {
+	params, _ := json.Marshal(r.Params)
+	return fmt.Sprintf("[%d] %s(%s)", r.ID, r.Method, string(params[:]))
 }
 
 // HTTP retruns an http request as bytes
@@ -143,9 +149,9 @@ func NewAnonymousConn() (conn *Conn) {
 
 // SimpleRequest sends a simple request (untyped response) to the confd
 func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{}, error) {
-	resp := &SimpleResponse{}
+	resp := new(interface{})
 	err := c.Request(method, resp, params...)
-	return resp.Result, err
+	return resp, err
 }
 
 // Request allows to send request with typed (parsed with json) responses
@@ -165,7 +171,7 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	// request
 	r := Request{method, params, c.id}
 	c.id++
-	c.logf("Send request %v", r)
+	c.logf("=> %s", r.String())
 	req, err := r.HTTP(c.URL.Host)
 	if err != nil {
 		return err
@@ -181,22 +187,21 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	// decode response
 	defer resp.Body.Close()
 	dec := json.NewDecoder(resp.Body)
-	err = dec.Decode(result)
+	respObj := new(Response)
+	err = dec.Decode(respObj)
 	if err != nil {
 		return reportErrorAndCloseConnection(err)
 	}
 
+	err = json.Unmarshal(*respObj.Result, result)
+	if err != nil {
+		return reportErrorAndCloseConnection(err)
+	}
+	c.logf("<= %v", respObj)
+
 	// General error handling
-	c.logf("Received response %v", result)
-	switch r := result.(type) {
-	case *Response:
-		if r.Error != nil {
-			return reportErrorAndCloseConnection(r.Error)
-		}
-	case *SimpleResponse:
-		if r.Error != nil {
-			return reportErrorAndCloseConnection(r.Error)
-		}
+	if respObj.Error != nil {
+		return reportErrorAndCloseConnection(respObj.Error)
 	}
 
 	return nil

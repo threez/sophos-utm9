@@ -25,13 +25,7 @@ func (c *Conn) ChangeObject(ref string, attributes interface{}) (err error) {
 
 // GetAnyObject returns a AnyObject for the given ref or nil
 func (c *Conn) GetAnyObject(ref string) (*AnyObject, error) {
-	response := new(struct {
-		Response
-		Result AnyObject `json:"result"`
-	})
+	response := new(AnyObject)
 	err := c.Request("get_object", response, ref)
-	if err == nil && response.Error != nil {
-		err = response.Error
-	}
-	return &response.Result, err
+	return response, err
 }
