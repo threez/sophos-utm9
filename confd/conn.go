@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -60,14 +61,14 @@ type Conn struct {
 // Response is used for custom response handling
 // just include the type in your types to handle errors
 type Response struct {
-	Error  error            `json:"error"` // pointer since it can be omitted
+	Error  *string          `json:"error"` // pointer since it can be omitted
 	ID     int64            `json:"id"`
 	Result *json.RawMessage `json:"result"`
 }
 
 func (r *Response) String() string {
 	if r.Error != nil {
-		return fmt.Sprintf("[%d] Error: %s", r.ID, r.Error)
+		return fmt.Sprintf("[%d] Error: %s", r.ID, *r.Error)
 	}
 	return fmt.Sprintf("[%d] Result: %s", r.ID, *r.Result)
 }
@@ -237,7 +238,7 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 
 	// General error handling
 	if respObj.Error != nil {
-		return respObj.Error
+		return errors.New(*respObj.Error)
 	}
 
 	return nil

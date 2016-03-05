@@ -32,9 +32,7 @@ func (c *Conn) BeginWriteTransaction() (Transaction, error) {
 }
 
 func (t *readTransaction) Rollback() (err error) {
-	_, err = t.SimpleRequest("thaw")
-	t.rwlock.RUnlock()
-	return
+	return t.Commit()
 }
 
 func (t *readTransaction) Commit() (err error) {
