@@ -45,15 +45,16 @@ type Options struct {
 
 // Conn is the confd connection object
 type Conn struct {
-	conn        *net.TCPConn
-	URL         *url.URL
-	id          int64 // json rpc counter
-	Logger      *log.Logger
-	Timeout     time.Duration
-	rwlock      sync.RWMutex // prevent multiple write/read transactions
-	Options     Options
-	LastRequest time.Time // last time a request was done
-	sync.Mutex
+	URL         *url.URL      // URL that the connection connects to
+	Logger      *log.Logger   // Logger if specified, will log confd actions
+	Timeout     time.Duration // Timeout specifies the conn read/write timeout
+	Options     Options       // Options represent connection options
+	LastRequest time.Time     // LastRequest last time a request was done
+
+	conn      *net.TCPConn
+	id        int64        // json rpc counter
+	rwlock    sync.RWMutex // prevent multiple write/read transactions
+	connMutex sync.Mutex   // prevent concurrent confd access
 }
 
 // Response is used for custom response handling
@@ -149,25 +150,57 @@ func NewAnonymousConn() (conn *Conn) {
 
 // SimpleRequest sends a simple request (untyped response) to the confd
 func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{}, error) {
-	resp := new(interface{})
-	err := c.Request(method, resp, params...)
-	return resp, err
+	result := new(interface{})
+	err := c.Request(method, result, params...)
+	return result, err
 }
 
 // Request allows to send request with typed (parsed with json) responses
-func (c *Conn) Request(method string, result interface{}, params ...interface{}) error {
+func (c *Conn) Request(method string, result interface{}, params ...interface{}) (err error) {
 	// make sure we have a connection to the server
-	err := c.connect() // initalize the session
+	err = c.connect()
 	if err != nil {
-		return err
+		return
 	}
 
-	reportErrorAndCloseConnection := func(err error) error {
+	c.connMutex.Lock()
+	err = c.request(method, result, params...)
+	c.connMutex.Unlock()
+
+	if err != nil {
 		c.Logger.Printf("Error: %v", err)
-		c.Close()
-		return err
 	}
+	return
+}
 
+// Connect creates a new confd session by calling new and get_SID confd calls
+func (c *Conn) connect() (err error) {
+	c.connMutex.Lock()
+	defer c.connMutex.Unlock()
+	if c.conn != nil {
+		return
+	}
+	c.logf("Connect to %s", c.safeURL())
+	conn, err := net.Dial("tcp", c.URL.Host)
+	if err != nil {
+		c.logf("Unable to connect %v", err)
+		return
+	}
+	c.conn = conn.(*net.TCPConn)
+	err = c.request("new", nil, &c.Options)
+	if err == nil && c.Options.SID == nil {
+		// if we got a sid we will use it next time
+		resp := new(interface{})
+		err = c.request("get_SID", resp)
+		c.Options.SID = resp
+	}
+	if err != nil {
+		c.logf("Unable to create session %v", err)
+	}
+	return
+}
+
+func (c *Conn) request(method string, result interface{}, params ...interface{}) error {
 	// request
 	r := Request{method, params, c.id}
 	c.id++
@@ -178,9 +211,11 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	}
 
 	// send request
-	resp, err := c.doRequest(req)
+	resp, err := c.sendRecv(req)
 	if err != nil {
-		return reportErrorAndCloseConnection(err)
+		// send receive operation failed, conenction will be closed
+		_ = c.close() // ignore close errors
+		return err
 	}
 	c.LastRequest = time.Now()
 
@@ -190,27 +225,45 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	respObj := new(Response)
 	err = dec.Decode(respObj)
 	if err != nil {
-		return reportErrorAndCloseConnection(err)
+		return err
 	}
-
-	err = json.Unmarshal(*respObj.Result, result)
-	if err != nil {
-		return reportErrorAndCloseConnection(err)
+	if result != nil {
+		err = json.Unmarshal(*respObj.Result, result)
+		if err != nil {
+			return err
+		}
 	}
 	c.logf("<= %v", respObj)
 
 	// General error handling
 	if respObj.Error != nil {
-		return reportErrorAndCloseConnection(respObj.Error)
+		return respObj.Error
 	}
 
 	return nil
 }
 
-func (c *Conn) doRequest(req *http.Request) (resp *http.Response, err error) {
-	c.Lock()
-	defer c.Unlock()
+// Close the confd connection
+func (c *Conn) Close() (err error) {
+	c.connMutex.Lock()
+	defer c.connMutex.Unlock()
+	if c.conn != nil {
+		c.logf("Disconnect from %s", c.safeURL())
+		_ = c.request("detach", nil) // ignore if we can't detach
+		_ = c.close()                // ignore close errors
+	}
+	return
+}
 
+func (c *Conn) close() (err error) {
+	if c.conn != nil {
+		err = c.conn.Close()
+	}
+	c.conn = nil
+	return
+}
+
+func (c *Conn) sendRecv(req *http.Request) (resp *http.Response, err error) {
 	// send to remote side and recieve response
 	err = c.conn.SetDeadline(time.Now().Add(c.Timeout))
 	if err != nil {
@@ -225,46 +278,6 @@ func (c *Conn) doRequest(req *http.Request) (resp *http.Response, err error) {
 	// read response
 	resp, err = http.ReadResponse(bufio.NewReader(c.conn), nil)
 
-	return
-}
-
-// Close the confd connection
-func (c *Conn) Close() (err error) {
-	if c.conn != nil {
-		c.logf("Disconnect from %s", c.safeURL())
-		_, _ = c.SimpleRequest("detach") // ignore if we can't detach
-		if c.conn != nil {
-			c.Lock()
-			err = c.conn.Close()
-			c.Unlock()
-		}
-		c.conn = nil
-	}
-	return
-}
-
-// Connect creates a new confd session by calling new and get_SID confd calls
-func (c *Conn) connect() (err error) {
-	if c.conn != nil {
-		return
-	}
-	c.logf("Connect to %s", c.safeURL())
-	c.Lock()
-	conn, err := net.Dial("tcp", c.URL.Host)
-	if err != nil {
-		c.logf("Unable to connect %v", err)
-		return
-	}
-	c.conn = conn.(*net.TCPConn)
-	c.Unlock()
-	_, err = c.SimpleRequest("new", c.Options)
-	if err == nil && c.Options.SID == nil {
-		// if we got a sid we will use it next time
-		c.Options.SID, err = c.SimpleRequest("get_SID")
-	}
-	if err != nil {
-		c.logf("Unable to create session %v", err)
-	}
 	return
 }
 
