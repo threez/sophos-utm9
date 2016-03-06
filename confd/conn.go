@@ -12,6 +12,12 @@ import (
 	"sync/atomic"
 )
 
+// BUG(threez) It currently requires to connect directly to the confd database.
+// This can be done by connecting through an ssh tunnel and forward the port
+// 4472, e.g.:
+//
+//      ssh -L 4472:127.0.0.1:4472 root@utm
+
 // Conn is the confd connection object
 type Conn struct {
 	URL       *url.URL    // URL that the connection connects to
@@ -33,8 +39,8 @@ func NewConn(URL string) (conn *Conn, err error) {
 	conn = &Conn{
 		URL:       u,
 		Logger:    nil,
-		Options:   NewOptions(u),
-		Transport: &TCPTransport{Timeout: DefaultTimeout},
+		Options:   newOptions(u),
+		Transport: &tcpTransport{Timeout: defaultTimeout},
 	}
 	return
 }
@@ -43,7 +49,7 @@ func NewConn(URL string) (conn *Conn, err error) {
 // to http://127.0.0.1:4472/ (LocalConnection)
 func NewAnonymousConn() (conn *Conn) {
 	// error is only for url parsing which can not happen here, therefore ignored
-	conn, _ = NewConn(LocalConnection)
+	conn, _ = NewConn(anonymousLocalConn)
 	return conn
 }
 
@@ -97,7 +103,7 @@ func (c *Conn) connect() (err error) {
 func (c *Conn) request(method string, result interface{}, params ...interface{}) error {
 	// request
 	id := atomic.AddUint64(&c.id, 1)
-	r, err := NewRequest(method, params, id)
+	r, err := newRequest(method, params, id)
 	if err != nil {
 		return err
 	}
@@ -116,7 +122,7 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 	}
 
 	// decode response
-	respObj, err := NewResponse(resp.Body)
+	respObj, err := newResponse(resp.Body)
 	if err != nil {
 		return err
 	}

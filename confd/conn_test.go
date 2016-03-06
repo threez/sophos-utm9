@@ -16,7 +16,7 @@ func connHelper() *Conn {
 	conn := NewAnonymousConn()
 	conn.Logger = log.New(os.Stdout, "confd ", log.LstdFlags)
 	conn.Options.Name = "confd-package-test"
-	t := conn.Transport.(*TCPTransport)
+	t := conn.Transport.(*tcpTransport)
 	t.Timeout = time.Second * 1
 	return conn
 }

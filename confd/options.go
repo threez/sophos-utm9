@@ -13,21 +13,21 @@ import (
 )
 
 // DefaultTimeout confd workers will kill the process after 60 seconds
-const DefaultTimeout = time.Second * 60
+const defaultTimeout = time.Second * 60
 
 // DefaultFacility system can only be used for local connections
-const DefaultFacility = "system"
+const defaultFacility = "system"
 
 const anonymousUser = ""
 const anonymousPassword = ""
 const localhost = "127.0.0.1"
 
 // DefaultPort of the confd listener
-const DefaultPort = 4472
+const defaultPort = 4472
 
 // LocalConnection is used on the box
-var LocalConnection = fmt.Sprintf("http://%s:%s@%s:%d/%s", anonymousUser,
-	anonymousPassword, localhost, DefaultPort, DefaultFacility)
+var anonymousLocalConn = fmt.Sprintf("http://%s:%s@%s:%d/%s", anonymousUser,
+	anonymousPassword, localhost, defaultPort, defaultFacility)
 
 // Options define confd connection options
 type Options struct {
@@ -40,8 +40,8 @@ type Options struct {
 	SID interface{} `json:",omitempty"`
 }
 
-// NewOptions are derived by defualts and the passed url
-func NewOptions(url *url.URL) *Options {
+// newOptions are derived by defualts and the passed url
+func newOptions(url *url.URL) *Options {
 	username := anonymousUser
 	password := anonymousPassword
 
@@ -56,7 +56,7 @@ func NewOptions(url *url.URL) *Options {
 	}
 
 	facility := strings.Replace(url.Path, "/", "", -1)
-	if facility == DefaultFacility {
+	if facility == defaultFacility {
 		facility = ""
 	}
 

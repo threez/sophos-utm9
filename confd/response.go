@@ -14,19 +14,19 @@ import (
 // ErrEmptyResponse is likly triggered by calling a function that isn't exported
 var ErrEmptyResponse = errors.New("Empty response")
 
-// Response is used for custom response handling
+// response is used for custom response handling
 // just include the type in your types to handle errors
-type Response struct {
+type response struct {
 	Error  *string          `json:"error"` // pointer since it can be omitted
 	ID     int64            `json:"id"`
 	Result *json.RawMessage `json:"result"`
 }
 
-// NewResponse based of the passed reader
-func NewResponse(reader io.ReadCloser) (resp *Response, err error) {
+// newResponse based of the passed reader
+func newResponse(reader io.ReadCloser) (resp *response, err error) {
 	defer reader.Close()
 	dec := json.NewDecoder(reader)
-	resp = new(Response)
+	resp = new(response)
 	err = dec.Decode(resp)
 	if err != nil {
 		return
@@ -35,7 +35,7 @@ func NewResponse(reader io.ReadCloser) (resp *Response, err error) {
 }
 
 // Decode the response into passed result or return request error
-func (r *Response) Decode(result interface{}) (err error) {
+func (r *response) Decode(result interface{}) (err error) {
 	if r.Error != nil {
 		return errors.New(*r.Error)
 	}
@@ -51,7 +51,7 @@ func (r *Response) Decode(result interface{}) (err error) {
 	return
 }
 
-func (r *Response) String() string {
+func (r *response) String() string {
 	if r.Error != nil {
 		return fmt.Sprintf("[%d] Error: %s", r.ID, *r.Error)
 	}

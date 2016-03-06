@@ -34,4 +34,8 @@ func TestDecodeBool(t *testing.T) {
 	err = json.Unmarshal([]byte("0"), &b)
 	assert.NoError(t, err)
 	assert.Equal(t, false, bool(b))
+
+	err = json.Unmarshal([]byte(`""`), &b)
+	assert.NoError(t, err)
+	assert.Equal(t, false, bool(b))
 }

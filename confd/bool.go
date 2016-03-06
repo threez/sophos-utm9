@@ -6,7 +6,6 @@ package confd
 
 import (
 	"encoding/json"
-	"strings"
 )
 
 // Bool are not true or false but can be strings, arrays, maps, and ints
@@ -21,7 +20,7 @@ func (b *Bool) UnmarshalJSON(bytes []byte) (err error) {
 	}
 	switch tv := decoded.(type) {
 	case string:
-		newValue := strings.Compare(tv, "") == 0
+		newValue := "" != tv
 		*b = Bool(newValue)
 	case float64:
 		newValue := tv == 1

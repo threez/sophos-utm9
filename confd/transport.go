@@ -24,7 +24,7 @@ type Transport interface {
 }
 
 // TCPTransport implements a tcp+http RoundTripper for confd connections
-type TCPTransport struct {
+type tcpTransport struct {
 	Timeout     time.Duration // Timeout specifies the conn read/write timeout
 	LastRequest time.Time     // LastRequest last time a request was done
 	conn        *net.TCPConn
@@ -32,7 +32,7 @@ type TCPTransport struct {
 }
 
 // Connect to the passed url
-func (t *TCPTransport) Connect(url *url.URL) error {
+func (t *tcpTransport) Connect(url *url.URL) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	conn, err := net.Dial("tcp", url.Host)
@@ -44,7 +44,7 @@ func (t *TCPTransport) Connect(url *url.URL) error {
 }
 
 // RoundTrip executes a request/response round trip
-func (t *TCPTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+func (t *tcpTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// send to remote side and recieve response
@@ -66,14 +66,14 @@ func (t *TCPTransport) RoundTrip(req *http.Request) (resp *http.Response, err er
 }
 
 // IsConnected returns
-func (t *TCPTransport) IsConnected() bool {
+func (t *tcpTransport) IsConnected() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.conn != nil
 }
 
 // Close the transport
-func (t *TCPTransport) Close() (err error) {
+func (t *tcpTransport) Close() (err error) {
 	if !t.IsConnected() {
 		return // we already disconnected
 	}
