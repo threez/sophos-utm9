@@ -33,3 +33,10 @@ func (c *Conn) GetAnyObject(ref string) (*AnyObject, error) {
 	err := c.Request("get_object", response, ref)
 	return response, err
 }
+
+// DelObject deletes an object by ref
+func (c *Conn) DelObject(ref string) (bool, error) {
+	var ok Bool
+	err := c.Request("del_object", &ok, ref)
+	return bool(ok), err
+}
