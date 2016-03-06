@@ -1,4 +1,4 @@
-# SOPHOS UTM9
+# SOPHOS UTM9 [![GoDoc](https://godoc.org/github.com/threez/sophos-utm9/confd?status.svg)](https://godoc.org/github.com/threez/sophos-utm9/confd)
 
 All code written here is for private purposes. If you use the code in this
 repository you might void your warranty. I can give no guarantees about it's
