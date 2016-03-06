@@ -47,10 +47,18 @@ func NewConn(URL string) (conn *Conn, err error) {
 }
 
 // NewAnonymousConn creates a new confd connection (is not acually connecting)
-// to http://127.0.0.1:4472/ (LocalConnection)
+// to http://127.0.0.1:4472/ (Local Connection)
 func NewAnonymousConn() (conn *Conn) {
 	// error is only for url parsing which can not happen here, therefore ignored
 	conn, _ = NewConn(anonymousLocalConn)
+	return conn
+}
+
+// NewSystemConn creates a new confd connection (is not acually connecting)
+// to http://system@127.0.0.1:4472/ (Local Connection)
+func NewSystemConn() (conn *Conn) {
+	// error is only for url parsing which can not happen here, therefore ignored
+	conn, _ = NewConn(systemLocalConn)
 	return conn
 }
 

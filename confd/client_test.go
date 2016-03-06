@@ -15,5 +15,5 @@ func TestSerializeOptionsAnonymous(t *testing.T) {
 	conn.Options.Name = "test"
 	bytes, err := json.Marshal(conn.Options)
 	assert.NoError(t, err)
-	assert.Equal(t, `{"client":"test"}`, string(bytes[:]))
+	assert.Equal(t, `{"client":"test","password":""}`, string(bytes[:]))
 }

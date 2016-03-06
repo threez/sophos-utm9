@@ -20,14 +20,22 @@ const defaultFacility = "system"
 
 const anonymousUser = ""
 const anonymousPassword = ""
+
+const systemUser = "system"
+const systemPassword = ""
+
 const localhost = "127.0.0.1"
 
 // DefaultPort of the confd listener
 const defaultPort = 4472
 
-// LocalConnection is used on the box
+// anonymousLocalConn is used on the box to get anonymous access
 var anonymousLocalConn = fmt.Sprintf("http://%s:%s@%s:%d/%s", anonymousUser,
 	anonymousPassword, localhost, defaultPort, defaultFacility)
+
+// adminLocalConn is used on the box to get admin access
+var systemLocalConn = fmt.Sprintf("http://%s:%s@%s:%d/%s", systemUser,
+	systemPassword, localhost, defaultPort, defaultFacility)
 
 // Options define confd connection options
 type Options struct {
@@ -35,7 +43,7 @@ type Options struct {
 	Name     string `json:"client,omitempty"`
 	Facility string `json:"facility,omitempty"`
 	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	Password string `json:"password"`
 	// SID (SessionID) can be a string (login) or number (anonymous)
 	SID interface{} `json:",omitempty"`
 }

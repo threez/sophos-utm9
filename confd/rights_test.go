@@ -18,6 +18,15 @@ func TestGetRights(t *testing.T) {
 	assert.Equal(t, []string{"ANONYMOUS"}, rights)
 }
 
+func TestAdminRights(t *testing.T) {
+	conn := NewSystemConn()
+	defer conn.Close()
+
+	rights, err := conn.GetRights()
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"SUPERADMIN"}, rights)
+}
+
 func TestHasRight(t *testing.T) {
 	conn := connHelper()
 	defer conn.Close()
