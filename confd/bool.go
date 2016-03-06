@@ -19,7 +19,7 @@ func (b *Bool) UnmarshalJSON(bytes []byte) (err error) {
 	case string:
 		newValue := strings.Compare(tv, "") == 0
 		*b = Bool(newValue)
-	case int:
+	case float64:
 		newValue := tv == 1
 		*b = Bool(newValue)
 	default:
@@ -29,8 +29,8 @@ func (b *Bool) UnmarshalJSON(bytes []byte) (err error) {
 }
 
 // MarshalJSON marshals the bool as confd
-func (b *Bool) MarshalJSON() (bytes []byte, err error) {
-	value := BoolValue(bool(*b))
+func (b Bool) MarshalJSON() (bytes []byte, err error) {
+	value := BoolValue(bool(b))
 	bytes, err = json.Marshal(value)
 	return
 }
