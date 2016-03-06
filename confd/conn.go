@@ -5,6 +5,7 @@
 package confd
 
 import (
+	"errors"
 	"log"
 	"net/url"
 	"strings"
@@ -70,6 +71,14 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 
 	err = c.request(method, result, params...)
 
+	// automatic error handling
+	if err == ErrEmptyResponse {
+		errs, _ := c.ErrList()
+		if len(errs) > 0 {
+			return errors.New(errs[0].Error())
+		}
+	}
+
 	if err != nil {
 		c.Logger.Printf("Error: %v", err)
 	}
@@ -130,6 +139,7 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 	if err != nil {
 		return err
 	}
+
 	c.logf("<= %v", respObj)
 
 	return nil
