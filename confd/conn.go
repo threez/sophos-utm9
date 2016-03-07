@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 // BUG(threez) It currently requires to connect directly to the confd database.
@@ -21,10 +20,13 @@ import (
 
 // Conn is the confd connection object
 type Conn struct {
-	URL       *url.URL    // URL that the connection connects to
-	Logger    *log.Logger // Logger if specified, will log confd actions
-	Options   *Options    // Options represent connection options
-	id        uint64      // json rpc counter
+	URL     *url.URL    // URL that the connection connects to
+	Logger  *log.Logger // Logger if specified, will log confd actions
+	Options *Options    // Options represent connection options
+	id      struct {
+		Value      uint64 // json rpc counter
+		sync.Mutex        // prevent multiple write/read transactions
+	}
 	Transport Transport
 	txMu      sync.Mutex // prevent multiple write/read transactions
 	sessionMu sync.Mutex // prevent concurrent confd access
@@ -122,8 +124,7 @@ func (c *Conn) connect() (err error) {
 
 func (c *Conn) request(method string, result interface{}, params ...interface{}) error {
 	// request
-	id := atomic.AddUint64(&c.id, 1)
-	r, err := newRequest(method, params, id)
+	r, err := newRequest(method, params, c.nextID())
 	if err != nil {
 		return err
 	}
@@ -179,4 +180,12 @@ func (c *Conn) safeURL() string {
 		return strings.Replace(c.URL.String(), c.Options.Password, "********", 1)
 	}
 	return c.URL.String()
+}
+
+func (c *Conn) nextID() uint64 {
+	c.id.Lock()
+	defer c.id.Unlock()
+	next := c.id.Value
+	c.id.Value++
+	return next
 }
