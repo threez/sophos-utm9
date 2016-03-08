@@ -40,3 +40,18 @@ func (c *Conn) DelObject(ref string) (bool, error) {
 	err := c.Request("del_object", &ok, ref)
 	return bool(ok), err
 }
+
+// GetAffectedObjects get a list of objects that directly or indirectly use a
+// list of given objects.
+// Note - Since all objects carry references to themselves, the list submitted
+// in the argument will also be included in the returned list.
+func (c *Conn) GetAffectedObjects(refs []string) ([]string, error) {
+	var affected []string
+	err := c.Request("get_affected_objects", &affected, refs)
+	return affected, err
+}
+
+// GetAllObjects returns all confd stored conf objects
+func (c *Conn) GetAllObjects() ([]AnyObject, error) {
+	return c.FilterObjects().Get()
+}
