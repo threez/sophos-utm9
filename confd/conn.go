@@ -82,7 +82,7 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	err = c.request(method, result, params...)
 
 	// automatic error handling
-	if err == ErrEmptyResponse {
+	if err == ErrEmptyResponse || err == ErrReturnCode {
 		errs, err := c.ErrList()
 		if err != nil {
 			return err
@@ -147,7 +147,7 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 	if err != nil {
 		return err
 	}
-	err = respObj.Decode(result)
+	err = respObj.Decode(result, method != "get_SID")
 	if err != nil {
 		return err
 	}

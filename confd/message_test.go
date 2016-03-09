@@ -11,38 +11,38 @@ import (
 
 func TestErr(t *testing.T) {
 	conn := connHelper()
+	conn.Options.Username = "system"
 	defer conn.Close()
 
 	tx, err := conn.BeginWriteTransaction()
 	assert.NoError(t, err)
 	defer tx.Rollback()
 
-	ok, err := conn.DelObject("REF_DefaultInternal")
-	assert.NoError(t, err)
-	assert.False(t, ok)
+	err = conn.request("del_object", nil, "REF_DefaultInternal")
+	assert.Equal(t, ErrReturnCode, err)
 
 	num, err := conn.ErrIsFatal()
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), num)
+	assert.Error(t, err)
+	assert.Equal(t, uint64(0), num)
 
 	num, err = conn.ErrIsNoack()
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), num)
+	assert.Equal(t, uint64(7), num)
 
 	errs, err := conn.ErrList()
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(errs))
-	assert.Equal(t, "OBJECT_DELETE_DENY", errs[0].MessageType)
-	assert.Equal(t, "FATAL [OBJECT_DELETE_DENY] Permission denied to delete "+
-		"ethernet standard interface object 'Internal'.", errs[0].Error())
+	assert.Equal(t, 7, len(errs))
+	assert.Equal(t, "OBJECT_DELETE_PARENT_DEL", errs[0].MessageType)
+	assert.Equal(t, "[OBJECT_DELETE_PARENT_DEL] The ethernet standard "+
+		"interface object 'Internal' is required by the QoS interface object "+
+		"'Internal'.\nContinuing will delete the latter object as well.",
+		errs[0].Error())
 
 	errs, err = conn.ErrListFatal()
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(errs))
-	assert.Equal(t, "OBJECT_DELETE_DENY", errs[0].MessageType)
+	assert.Equal(t, 0, len(errs))
 
 	errs, err = conn.ErrListNoAck()
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(errs))
-	assert.Equal(t, "OBJECT_DELETE_DENY", errs[0].MessageType)
+	assert.Equal(t, 7, len(errs))
 }

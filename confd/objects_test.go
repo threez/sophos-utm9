@@ -69,3 +69,45 @@ func TestAllObjects(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, len(objects) > 300)
 }
+
+func TestSetObject(t *testing.T) {
+	conn := connHelper()
+	conn.Options.Username = "system"
+	defer conn.Close()
+	tx, err := conn.BeginWriteTransaction()
+	assert.NoError(t, err)
+	defer tx.Rollback()
+
+	var host = AnyObject{
+		ObjectMeta: ObjectMeta{
+			Class: "network",
+			Type:  "host",
+		},
+		Data: map[string]interface{}{
+			"address":  "8.8.8.8",
+			"name":     "Google DNS",
+			"resolved": BoolValue(true),
+		},
+	}
+
+	ref, err := conn.SetObject(&host, true)
+	assert.NoError(t, err)
+	assert.Contains(t, ref, "REF_")
+
+	obj, err := conn.GetAnyObject(ref)
+	assert.NoError(t, err)
+	assert.Equal(t, obj.Data["address"], "8.8.8.8")
+
+	err = conn.MoveObject(ref, "REF_GOOGLEDNS")
+	assert.NoError(t, err)
+
+	obj, err = conn.GetAnyObject("REF_GOOGLEDNS")
+	assert.NoError(t, err)
+	assert.Equal(t, obj.Data["address"], "8.8.8.8")
+
+	err = conn.LockObject("REF_GOOGLEDNS")
+	assert.NoError(t, err)
+
+	err = conn.UnlockObject("REF_GOOGLEDNS")
+	assert.NoError(t, err)
+}

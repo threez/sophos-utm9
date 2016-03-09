@@ -9,10 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 )
 
 // ErrEmptyResponse is likly triggered by calling a function that isn't exported
 var ErrEmptyResponse = errors.New("Empty response")
+
+// ErrReturnCode is triggered by a 0 return value
+var ErrReturnCode = errors.New("Returned 0, check errors")
 
 // response is used for custom response handling
 // just include the type in your types to handle errors
@@ -35,12 +39,21 @@ func newResponse(reader io.ReadCloser) (resp *response, err error) {
 }
 
 // Decode the response into passed result or return request error
-func (r *response) Decode(result interface{}) (err error) {
+func (r *response) Decode(result interface{}, checkReturn bool) (err error) {
 	if r.Error != nil {
 		return errors.New(*r.Error)
 	}
 	if r.Result == nil {
 		return ErrEmptyResponse
+	}
+	// disable return code cheking for confd.Bool values (they are encoded as
+	// integer values)
+	if checkReturn && result != nil &&
+		reflect.TypeOf(result).String() == "*confd.Bool" {
+		checkReturn = false
+	}
+	if checkReturn && string((*r.Result)[:]) == "0" {
+		return ErrReturnCode
 	}
 	if result != nil {
 		err = json.Unmarshal(*r.Result, result)

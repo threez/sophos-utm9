@@ -11,6 +11,7 @@ import (
 
 func TestReadTransactions(t *testing.T) {
 	conn := connHelper()
+	conn.Options.Username = "system"
 	defer conn.Close()
 
 	rtx, err := conn.BeginReadTransaction()
@@ -26,6 +27,7 @@ func TestReadTransactions(t *testing.T) {
 
 func TestReadRollbackTransactions(t *testing.T) {
 	conn := connHelper()
+	conn.Options.Username = "system"
 	defer conn.Close()
 
 	rtx, err := conn.BeginReadTransaction()
@@ -36,6 +38,7 @@ func TestReadRollbackTransactions(t *testing.T) {
 
 func TestWriteTransactions(t *testing.T) {
 	conn := connHelper()
+	conn.Options.Username = "system"
 	defer conn.Close()
 
 	wtx, err := conn.BeginWriteTransaction()
@@ -47,6 +50,7 @@ func TestWriteTransactions(t *testing.T) {
 
 func TestWriteRollbackTransactions(t *testing.T) {
 	conn := connHelper()
+	conn.Options.Username = "system"
 	defer conn.Close()
 
 	wtx, err := conn.BeginWriteTransaction()

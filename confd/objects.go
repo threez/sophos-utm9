@@ -6,12 +6,12 @@ package confd
 
 // ObjectMeta confd object metadata
 type ObjectMeta struct {
-	Ref      string `json:"ref"`
-	Class    string `json:"class"`
-	Type     string `json:"type"`
+	Ref      string `json:"ref,omitempty"`
+	Class    string `json:"class,omitempty"`
+	Type     string `json:"type,omitempty"`
 	Hidden   Bool   `json:"hidden"`
-	Lock     string `json:"lock"`
-	Nodel    string `json:"nodel"`
+	Lock     Bool   `json:"lock"`
+	Nodel    string `json:"nodel,omitempty"`
 	Autoname Bool   `json:"autoname"`
 }
 
@@ -24,14 +24,19 @@ type AnyObject struct {
 // ChangeObject changes the object ref attributes
 func (c *Conn) ChangeObject(ref string, attributes interface{}) (err error) {
 	_, err = c.SimpleRequest("change_object", ref, attributes)
-	return
+	return err
 }
 
-// GetAnyObject returns a AnyObject for the given ref or nil
+// GetAnyObject returns an AnyObject for the given ref or nil
 func (c *Conn) GetAnyObject(ref string) (*AnyObject, error) {
 	response := new(AnyObject)
-	err := c.Request("get_object", response, ref)
-	return response, err
+	return response, c.GetObject(ref, response)
+}
+
+// GetObject returns object for the given ref or nil
+func (c *Conn) GetObject(ref string, object interface{}) error {
+	err := c.Request("get_object", object, ref)
+	return err
 }
 
 // DelObject deletes an object by ref
@@ -54,4 +59,42 @@ func (c *Conn) GetAffectedObjects(refs []string) ([]string, error) {
 // GetAllObjects returns all confd stored conf objects
 func (c *Conn) GetAllObjects() ([]AnyObject, error) {
 	return c.FilterObjects().Get()
+}
+
+// LockObject sets the lockstate of the object to locked
+func (c *Conn) LockObject(ref string) error {
+	_, err := c.SimpleRequest("lock_object", ref)
+	return err
+}
+
+// UnlockObject sets the lockstate of the object to unlocked
+func (c *Conn) UnlockObject(ref string) error {
+	_, err :=
+		c.SimpleRequest("lock_object", ref, BoolValue(false))
+	return err
+}
+
+// MoveObject change the reference string of an existing object,
+// keeping all places where it is used consistent.
+func (c *Conn) MoveObject(oldRef string, newRef string) error {
+	_, err := c.SimpleRequest("move_object", oldRef, newRef)
+	return err
+}
+
+// ResetObject reset an object to its state in the default storage.
+func (c *Conn) ResetObject(ref string) error {
+	_, err := c.SimpleRequest("reset_object", ref)
+	return err
+}
+
+// SetObject create or update an object.
+// When fuzzyName is true and the name is already taken, append the string
+// " (2)" to the name and increment the number until a free name is found.
+// Returns the ref of the created object
+func (c *Conn) SetObject(obj interface{}, fuzzyName bool) (string, error) {
+	ref, err := c.SimpleRequest("set_object", obj)
+	if err != nil {
+		return "", err
+	}
+	return (*ref.(*interface{})).(string), err
 }
