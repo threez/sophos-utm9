@@ -5,8 +5,9 @@
 package confd
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetAnyObject(t *testing.T) {
@@ -26,14 +27,9 @@ func TestAffectedObjects(t *testing.T) {
 
 	refs, err := conn.GetAffectedObjects([]string{"REF_DefaultInternalNetwork"})
 	assert.NoError(t, err)
-	assert.Equal(t, []string{
-		"REF_PacMasFromInterNetwo",
-		"REF_DefaultHTTPProfile",
-		"REF_DefaultInternalNetwork",
-		"REF_DefaultInternal",
-		"REF_QosItfDefaultInternal",
-		"REF_ItfParamsDefaultInternal",
-	}, refs)
+	assert.Contains(t, refs, "REF_DefaultInternal")
+	assert.Contains(t, refs, "REF_ItfParamsDefaultInternal")
+	assert.Contains(t, refs, "REF_DefaultInternalNetwork")
 }
 
 func TestFilterObjects(t *testing.T) {
