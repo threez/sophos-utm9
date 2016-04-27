@@ -25,11 +25,12 @@ type Conn struct {
 	Options *Options    // Options represent connection options
 	id      struct {
 		Value      uint64 // json rpc counter
-		sync.Mutex        // prevent multiple write/read transactions
+		sync.Mutex        // prevent double counting
 	}
 	Transport Transport
 	txMu      sync.Mutex // prevent multiple write/read transactions
-	sessionMu sync.Mutex // prevent concurrent confd access
+	sessionMu sync.Mutex // prevent multiple connections
+	requestMu sync.Mutex // prevent concurrent confd access
 }
 
 // NewConn creates a new confd connection (is not acually connecting)
@@ -93,7 +94,7 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	}
 
 	if err != nil {
-		c.Logger.Printf("Error: %v", err)
+		c.logf("Error: %v", err)
 	}
 	return
 }
@@ -135,6 +136,8 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 	}
 
 	// send request
+	c.requestMu.Lock()
+	defer c.requestMu.Unlock()
 	resp, err := c.Transport.RoundTrip(req)
 	if err != nil {
 		// send receive operation failed, conenction will be closed
