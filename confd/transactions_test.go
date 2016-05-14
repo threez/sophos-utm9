@@ -10,9 +10,8 @@ import (
 )
 
 func TestReadTransactions(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	rtx, err := conn.BeginReadTransaction()
 	assert.NoError(t, err)
@@ -22,13 +21,12 @@ func TestReadTransactions(t *testing.T) {
 	assert.Equal(t, "aaa", obj.Class)
 	assert.Equal(t, "Anonymous user", obj.Data["comment"])
 
-	rtx.Commit()
+	assert.NoError(t, rtx.Commit())
 }
 
 func TestReadRollbackTransactions(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	rtx, err := conn.BeginReadTransaction()
 	assert.NoError(t, err)
@@ -37,9 +35,8 @@ func TestReadRollbackTransactions(t *testing.T) {
 }
 
 func TestWriteTransactions(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	wtx, err := conn.BeginWriteTransaction()
 	assert.NoError(t, err)
@@ -49,9 +46,8 @@ func TestWriteTransactions(t *testing.T) {
 }
 
 func TestWriteRollbackTransactions(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	wtx, err := conn.BeginWriteTransaction()
 	assert.NoError(t, err)

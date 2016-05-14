@@ -11,13 +11,12 @@ import (
 )
 
 func TestErr(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	tx, err := conn.BeginWriteTransaction()
 	assert.NoError(t, err)
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	err = conn.request("del_object", nil, "REF_DefaultInternal")
 	assert.Equal(t, ErrReturnCode, err)

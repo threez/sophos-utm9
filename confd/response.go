@@ -28,7 +28,7 @@ type response struct {
 
 // newResponse based of the passed reader
 func newResponse(reader io.ReadCloser) (resp *response, err error) {
-	defer reader.Close()
+	defer func() { _ = reader.Close() }() // ignore fail here
 	dec := json.NewDecoder(reader)
 	resp = new(response)
 	err = dec.Decode(resp)

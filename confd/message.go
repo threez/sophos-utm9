@@ -19,12 +19,12 @@ type ErrDescription struct {
 	Function         string   `json:"del_object"`
 	Ref              string   `json:"ref"`
 	MessageType      string   `json:"msgtype"`
-	NeverHide        Bool     `json:"never_hide"`
 	Format           string   `json:"format"`
-	Fatal            Bool     `json:"fatal"`
 	Class            string   `json:"class"`
 	Type             string   `json:"type"`
 	Permission       string   `json:"perms"`
+	NeverHide        Bool     `json:"never_hide"`
+	Fatal            Bool     `json:"fatal"`
 }
 
 func (e *ErrDescription) Error() string {

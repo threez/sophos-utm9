@@ -84,9 +84,9 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 
 	// automatic error handling
 	if err == ErrEmptyResponse || err == ErrReturnCode {
-		errs, err := c.ErrList()
-		if err != nil {
-			return err
+		errs, errl := c.ErrList()
+		if errl != nil {
+			return errl
 		}
 		if len(errs) > 0 {
 			return errors.New(errs[0].Error())

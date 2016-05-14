@@ -12,7 +12,7 @@ import (
 
 func TestExports(t *testing.T) {
 	conn := connHelper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	exports, err := conn.Exports()
 	assert.NoError(t, err)

@@ -22,6 +22,12 @@ func connHelper() *Conn {
 	return conn
 }
 
+func systemConnHelper() *Conn {
+	conn := connHelper()
+	conn.Options.Username = "system"
+	return conn
+}
+
 func TestInvalidURL(t *testing.T) {
 	_, err := NewConn("%")
 	assert.Error(t, err)
@@ -50,14 +56,14 @@ func TestSafeURL(t *testing.T) {
 
 func TestSID(t *testing.T) {
 	conn := connHelper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	assert.True(t, conn.Options.SID == nil)
 
 	_, err := conn.SimpleRequest("get_SID")
 	assert.NoError(t, err)
 	assert.True(t, conn.Options.SID != nil)
 	old := conn.Options.SID
-	conn.Close()
+	assert.NoError(t, conn.Close())
 	_, err = conn.SimpleRequest("get_SID")
 	assert.NoError(t, err)
 	assert.True(t, conn.Options.SID == old)

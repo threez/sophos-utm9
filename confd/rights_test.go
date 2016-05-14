@@ -11,7 +11,7 @@ import (
 
 func TestGetRights(t *testing.T) {
 	conn := connHelper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	rights, err := conn.GetRights()
 	assert.NoError(t, err)
@@ -20,7 +20,7 @@ func TestGetRights(t *testing.T) {
 
 func TestAdminRights(t *testing.T) {
 	conn := NewSystemConn()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	rights, err := conn.GetRights()
 	assert.NoError(t, err)
@@ -29,7 +29,7 @@ func TestAdminRights(t *testing.T) {
 
 func TestHasRight(t *testing.T) {
 	conn := connHelper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ok, err := conn.HasRight("foo")
 	assert.NoError(t, err)
@@ -42,7 +42,7 @@ func TestHasRight(t *testing.T) {
 
 func TestHasOneOfRights(t *testing.T) {
 	conn := connHelper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ok, err := conn.HasOneOfRights([]string{"foo"})
 	assert.NoError(t, err)

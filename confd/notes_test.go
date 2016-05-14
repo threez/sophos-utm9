@@ -11,9 +11,8 @@ import (
 )
 
 func TestNode(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	node, err := conn.GetNode("ssh")
 	assert.NoError(t, err)

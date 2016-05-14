@@ -12,7 +12,7 @@ import (
 
 func TestGetAnyObject(t *testing.T) {
 	conn := connHelper()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	obj, err := conn.GetAnyObject("REF_AnonymousUser")
 	assert.NoError(t, err)
@@ -21,9 +21,8 @@ func TestGetAnyObject(t *testing.T) {
 }
 
 func TestAffectedObjects(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	refs, err := conn.GetAffectedObjects([]string{"REF_DefaultInternalNetwork"})
 	assert.NoError(t, err)
@@ -33,9 +32,8 @@ func TestAffectedObjects(t *testing.T) {
 }
 
 func TestFilterObjects(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	objects, err := conn.FilterObjects().
 		ClassName("aaa").
@@ -57,9 +55,8 @@ func TestFilterObjects(t *testing.T) {
 }
 
 func TestAllObjects(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 
 	objects, err := conn.GetAllObjects()
 	assert.NoError(t, err)
@@ -67,12 +64,11 @@ func TestAllObjects(t *testing.T) {
 }
 
 func TestSetObject(t *testing.T) {
-	conn := connHelper()
-	conn.Options.Username = "system"
-	defer conn.Close()
+	conn := systemConnHelper()
+	defer func() { _ = conn.Close() }()
 	tx, err := conn.BeginWriteTransaction()
 	assert.NoError(t, err)
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var host = AnyObject{
 		ObjectMeta: ObjectMeta{
