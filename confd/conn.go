@@ -6,11 +6,15 @@ package confd
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 )
+
+var safePasswordRegexp = regexp.MustCompile(`password":"[^"]+"`)
 
 // BUG(threez) It currently requires to connect directly to the confd database.
 // This can be done by connecting through an ssh tunnel and forward the port
@@ -65,6 +69,18 @@ func NewSystemConn() (conn *Conn) {
 	return conn
 }
 
+// NewUserConn creates a new conn for the given user (is not acually connecting)
+// to http://user:password@127.0.0.1:4472/ (Local Connection)
+func NewUserConn(username, password, ip string) (conn *Conn) {
+	// error is only for url parsing which can not happen here, therefore ignored
+	conn = NewAnonymousConn()
+	conn.Options.Facility = "webadmin"
+	conn.Options.Username = username
+	conn.Options.Password = password
+	conn.Options.IP = ip
+	return conn
+}
+
 // SimpleRequest sends a simple request (untyped response) to the confd
 func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{}, error) {
 	result := new(interface{})
@@ -75,7 +91,7 @@ func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{},
 // Request allows to send request with typed (parsed with json) responses
 func (c *Conn) Request(method string, result interface{}, params ...interface{}) (err error) {
 	// make sure we have a connection to the server
-	err = c.connect()
+	err = c.Connect()
 	if err != nil {
 		return
 	}
@@ -99,8 +115,9 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	return
 }
 
-// Connect creates a new confd session by calling new and get_SID confd calls
-func (c *Conn) connect() (err error) {
+// Connect creates a new confd session by calling new and get_SID confd calls.
+// It is preffered to not use the call and create sessions if requests are made
+func (c *Conn) Connect() (err error) {
 	if c.Transport.IsConnected() {
 		return
 	}
@@ -172,12 +189,17 @@ func (c *Conn) Close() (err error) {
 	return
 }
 
+// logf takes care of logging if a logger is present and removes password
+// information of a given form
 func (c *Conn) logf(format string, args ...interface{}) {
 	if c.Logger != nil {
-		c.Logger.Printf(format, args...)
+		str := fmt.Sprintf(format, args...)
+		str = safePasswordRegexp.ReplaceAllString(str, `password":"********"`)
+		c.Logger.Print(str)
 	}
 }
 
+// Returns a url that doesn't contain a password
 func (c *Conn) safeURL() string {
 	if c.Options.Password != "" {
 		return strings.Replace(c.URL.String(), c.Options.Password, "********", 1)

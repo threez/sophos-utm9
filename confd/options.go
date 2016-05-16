@@ -44,6 +44,7 @@ type Options struct {
 	Facility string `json:"facility,omitempty"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password"`
+	IP       string `json:"ip,omitempty"`
 	// SID (SessionID) can be a string (login) or number (anonymous)
 	SID interface{} `json:",omitempty"`
 }
