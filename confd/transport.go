@@ -48,6 +48,9 @@ func (t *tcpTransport) RoundTrip(req *http.Request) (resp *http.Response, err er
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// send to remote side and recieve response
+	if t.conn == nil {
+		panic("Called conf.tcpTransport.RoundTrip without being connected!")
+	}
 	err = t.conn.SetDeadline(time.Now().Add(t.Timeout))
 	if err != nil {
 		return
