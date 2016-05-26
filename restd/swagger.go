@@ -15,54 +15,16 @@ import (
 	"github.com/threez/sophos-utm9/confd"
 )
 
-type SwaggerInfo struct {
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Version     string `json:"version,omitempty"`
+// SwaggerAPI caches the swagger definitions for each class and the nodes tree
+type SwaggerAPI struct {
+	Classes []string
+	Meta    confd.ObjectMetaTree
+	Specs   map[string]*Swagger
+	conn    *confd.Conn
+	prefix  string
 }
 
-type SwaggerPaths map[string]*SwaggerAction
-
-type Items map[string]string
-
-type SwaggerSchema struct {
-	Type        string                    `json:"type,omitempty"`
-	Format      string                    `json:"format,omitempty"`
-	Description string                    `json:"description,omitempty"`
-	Properties  map[string]*SwaggerSchema `json:"properties,omitempty"`
-	Items       Items                     `json:"items,omitempty"`
-	Ref         string                    `json:"$ref,omitempty"`
-	Default     interface{}               `json:"default,omitempty"`
-}
-
-type SwaggerResponse struct {
-	Description string         `json:"description,omitempty"`
-	Schema      *SwaggerSchema `json:"schema,omitempty"`
-}
-
-type SwaggerParameter struct {
-	Name        string         `json:"name,omitempty"`
-	In          string         `json:"in,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Required    bool           `json:"required,omitempty"`
-	Type        string         `json:"type,omitempty"`
-	Schema      *SwaggerSchema `json:"schema,omitempty"`
-}
-
-type SwaggerAction struct {
-	Summary     string                      `json:"summary,omitempty"`
-	Description string                      `json:"description,omitempty"`
-	Parameters  []*SwaggerParameter         `json:"parameters,omitempty"`
-	Tags        []string                    `json:"tags,omitempty"`
-	Responses   map[string]*SwaggerResponse `json:"responses,omitempty"`
-}
-
-type BasicAuth struct {
-	Type string `json:"type,omitempty"`
-	Name string `json:"name,omitempty"`
-	In   string `json:"in,omitempty"`
-}
-
+// Swagger main data structure, that holds the complete Swagger defintion
 type Swagger struct {
 	SpecVersion         string                    `json:"swagger,omitempty"`
 	Info                SwaggerInfo               `json:"info,omitempty"`
@@ -73,6 +35,62 @@ type Swagger struct {
 	Paths               map[string]SwaggerPaths   `json:"paths,omitempty"`
 	Definitions         map[string]*SwaggerSchema `json:"definitions,omitempty"`
 	SecurityDefinitions map[string]*BasicAuth     `json:"securityDefinitions,omitempty"`
+}
+
+// SwaggerInfo contains the API title, version and description
+type SwaggerInfo struct {
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+}
+
+// SwaggerPaths map pats to swagger actions
+type SwaggerPaths map[string]*SwaggerAction
+
+// SwaggerSchema describes the schema of an object
+type SwaggerSchema struct {
+	Type        string                    `json:"type,omitempty"`
+	Format      string                    `json:"format,omitempty"`
+	Description string                    `json:"description,omitempty"`
+	Properties  map[string]*SwaggerSchema `json:"properties,omitempty"`
+	Items       SwaggerItems              `json:"items,omitempty"`
+	Ref         string                    `json:"$ref,omitempty"`
+	Default     interface{}               `json:"default,omitempty"`
+}
+
+// BasicAuth basic authentication for the Swagger defintion
+type BasicAuth struct {
+	Type string `json:"type,omitempty"`
+	Name string `json:"name,omitempty"`
+	In   string `json:"in,omitempty"`
+}
+
+// SwaggerItems item description of a SwaggerSchema
+type SwaggerItems map[string]string
+
+// SwaggerAction contains all meta dato to an action like GET, POST, ...
+type SwaggerAction struct {
+	Summary     string                      `json:"summary,omitempty"`
+	Description string                      `json:"description,omitempty"`
+	Parameters  []*SwaggerParameter         `json:"parameters,omitempty"`
+	Tags        []string                    `json:"tags,omitempty"`
+	Responses   map[string]*SwaggerResponse `json:"responses,omitempty"`
+}
+
+// SwaggerParameter defines parameters for SwaggerAction's
+type SwaggerParameter struct {
+	Name        string         `json:"name,omitempty"`
+	In          string         `json:"in,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Required    bool           `json:"required,omitempty"`
+	Type        string         `json:"type,omitempty"`
+	Schema      *SwaggerSchema `json:"schema,omitempty"`
+}
+
+// SwaggerResponse defines responses for SwaggerAction's
+type SwaggerResponse struct {
+	Description string         `json:"description,omitempty"`
+	Schema      *SwaggerSchema `json:"schema,omitempty"`
 }
 
 var translation = map[string]string{
@@ -101,14 +119,9 @@ var translationFormat = map[string]string{
 	"TIME": "date-time",
 }
 
-type SwaggerAPI struct {
-	Classes []string
-	Meta    confd.ObjectMetaTree
-	Specs   map[string]*Swagger
-	conn    *confd.Conn
-	prefix  string
-}
-
+// NewSwaggerAPI connects to the confd and creates a new set of api definitions
+// under the passed apiPrefix. If any confd interaction fails, it returns an
+// error, detailing the problem.
 func NewSwaggerAPI(apiPrefix string) (*SwaggerAPI, error) {
 	var err error
 	api := &SwaggerAPI{
@@ -130,6 +143,8 @@ func NewSwaggerAPI(apiPrefix string) (*SwaggerAPI, error) {
 	return api, err
 }
 
+// RegisterSwaggerAPI registers the swagger api access and their list of
+// definitions.
 func (a *SwaggerAPI) RegisterSwaggerAPI(r *mux.Router) {
 	type ClassLink struct {
 		Description string `json:"description"`
@@ -137,17 +152,17 @@ func (a *SwaggerAPI) RegisterSwaggerAPI(r *mux.Router) {
 		Link        string `json:"link"`
 	}
 
-	r.HandleFunc("/classes", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/definitions", func(w http.ResponseWriter, r *http.Request) {
 		classDefs := make([]ClassLink, len(a.Classes))
 		for i, class := range a.Classes {
 			classDefs[i].Description = class
-			classDefs[i].Link = fmt.Sprintf(a.prefix+"/%s/swagger.json", class)
+			classDefs[i].Link = fmt.Sprintf(a.prefix+"/definitions/%s", class)
 			classDefs[i].Name = class
 		}
 		respondJSON(classDefs, w, r)
 	})
 
-	r.HandleFunc("/{class}/swagger.json", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/definitions/{class}", func(w http.ResponseWriter, r *http.Request) {
 		var class = mux.Vars(r)["class"]
 		respondJSON(a.Specs[class], w, r)
 	})
@@ -156,6 +171,8 @@ func (a *SwaggerAPI) RegisterSwaggerAPI(r *mux.Router) {
 		http.StripPrefix(a.prefix, http.FileServer(http.Dir("./static/"))))
 }
 
+// Cors creates a CORS handler for the api, so that it can be accessed by
+// javascript.
 func (a *SwaggerAPI) Cors(handler http.Handler) http.Handler {
 	c := cors.New(cors.Options{
 		// AllowedOrigins is a list of origins a cross-domain request can be executed from.
@@ -195,6 +212,8 @@ func (a *SwaggerAPI) Cors(handler http.Handler) http.Handler {
 	return c.Handler(handler)
 }
 
+// MakeResty changes the passed any object to be more restful and conform to
+// the common json encoding practices.
 func (a *SwaggerAPI) MakeResty(obj confd.AnyObject) map[string]interface{} {
 	data := obj.Data
 
@@ -243,7 +262,9 @@ func (a *SwaggerAPI) buildSwagger(class string) (*Swagger, error) {
 
 	var classTypes []string
 	err := a.conn.Request("get_object_types", &classTypes, class)
-	// TODO: handle error
+	if err != nil {
+		return nil, err
+	}
 	for _, classType := range classTypes {
 		tpath := fmt.Sprintf("/objects/%s/%s", class, classType)
 		objectResponses := make(map[string]*SwaggerResponse)
@@ -366,13 +387,15 @@ func (a *SwaggerAPI) buildSwagger(class string) (*Swagger, error) {
 		attrs := classmeta[classType]
 		name := fmt.Sprintf("%s::%s", class, classType)
 		var desc string
-		a.conn.Request("get_object_descr", &desc, class, classType)
+		err = a.conn.Request("get_object_descr", &desc, class, classType)
+		if err != nil {
+			return nil, err
+		}
 		schema := &SwaggerSchema{
 			Type:        "object",
 			Description: desc,
 			Properties:  make(map[string]*SwaggerSchema),
 		}
-		// TODO: handle error
 		for attr, def := range attrs {
 			if attr == "_name" {
 				continue

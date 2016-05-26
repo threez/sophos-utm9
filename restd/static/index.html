@@ -55,7 +55,7 @@
         $("#input_username").val(params.username);
 
         $.ajax({
-          url: "/api/classes"
+          url: "/api/definitions"
         }).then(function(data) {
           data.sort().forEach(function(klass) {
             var selected = (klass.link == params.classUrl);

@@ -10,10 +10,12 @@ import (
 	"net/http"
 )
 
+// ObjectAPI handles all object related rest requests
 type ObjectAPI struct {
 	*SwaggerAPI
 }
 
+// Get handles single object resquests (GET /class/REF_XXX)
 func (api *ObjectAPI) Get(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
 	vars := mux.Vars(r)
 	var value confd.AnyObject
@@ -28,6 +30,7 @@ func (api *ObjectAPI) Get(w http.ResponseWriter, r *http.Request, conn *confd.Co
 	respondJSON(api.MakeResty(value), w, r)
 }
 
+// All handles collection requests (GET /class)
 func (api *ObjectAPI) All(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
 	vars := mux.Vars(r)
 	var values []confd.AnyObject
