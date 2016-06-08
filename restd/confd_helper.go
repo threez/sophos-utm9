@@ -5,9 +5,15 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/threez/sophos-utm9/confd"
+)
+
+var (
+	// must be initialized before use (normally done in `initLogger`)
+	confdLogger *log.Logger
 )
 
 type confdHandler func(w http.ResponseWriter, r *http.Request, conn *confd.Conn)

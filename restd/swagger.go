@@ -160,12 +160,12 @@ func (a *SwaggerAPI) RegisterSwaggerAPI(r *mux.Router) {
 			classDefs[i].Name = class
 		}
 		respondJSON(classDefs, w, r)
-	})
+	}).Name("swaggerDefinitions")
 
 	r.HandleFunc("/definitions/{class}", func(w http.ResponseWriter, r *http.Request) {
 		var class = mux.Vars(r)["class"]
 		respondJSON(a.Specs[class], w, r)
-	})
+	}).Name("swaggerDefinition")
 
 	r.PathPrefix("/").Handler(
 		http.StripPrefix(a.prefix, http.FileServer(http.Dir("./static/"))))

@@ -13,13 +13,8 @@ import (
 	"github.com/codegangsta/negroni"
 )
 
-var (
-	apiLogger   *negroni.Logger
-	confdLogger *log.Logger
-)
-
 func initLogger() {
-	apiLogger = negroni.NewLogger()
+	server.apiLogger = negroni.NewLogger()
 	flags := 0
 	var writer io.Writer = os.Stdout
 
@@ -33,9 +28,9 @@ func initLogger() {
 		flags = log.LstdFlags
 	}
 
-	apiLogger.SetPrefix("api ")
-	apiLogger.SetFlags(flags)
-	apiLogger.SetOutput(writer)
+	server.apiLogger.SetPrefix("api ")
+	server.apiLogger.SetFlags(flags)
+	server.apiLogger.SetOutput(writer)
 
 	log.SetPrefix("main ")
 	log.SetFlags(flags)
