@@ -3,5 +3,5 @@
 # license that can be found in the LICENSE file.
 
 test:
-	go test -v -coverprofile=coverage.out
+	go test -race -v -coverprofile=coverage.out
 	go tool cover -html=coverage.out

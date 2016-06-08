@@ -18,7 +18,8 @@ func TestErr(t *testing.T) {
 	assert.NoError(t, err)
 	defer func() { _ = tx.Rollback() }()
 
-	err = conn.request("del_object", nil, "REF_DefaultInternal")
+	err = conn.request(conn.queuedExecution, "del_object",
+		nil, "REF_DefaultInternal")
 	assert.Equal(t, ErrReturnCode, err)
 
 	num, err := conn.ErrIsFatal()

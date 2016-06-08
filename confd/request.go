@@ -30,8 +30,11 @@ func newRequest(method string, params interface{}, id uint64) (req *request, err
 }
 
 func (r *request) String() string {
-	params := []byte(*r.Params)
-	return fmt.Sprintf("[%d] %s(%s)", r.ID, r.Method, string(params[:]))
+	params := string(([]byte(*r.Params))[:])
+	if params == "null" {
+		params = ""
+	}
+	return fmt.Sprintf("[%d] %s(%s)", r.ID, r.Method, params)
 }
 
 // HTTP retruns an http request as bytes

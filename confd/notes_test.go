@@ -17,14 +17,14 @@ func TestNode(t *testing.T) {
 	node, err := conn.GetNode("ssh")
 	assert.NoError(t, err)
 	assert.Equal(t, float64(22), node["port"])
-	assert.Equal(t, "REF_DefaultInternalNetwork",
+	assert.Equal(t, "REF_NetworkAny",
 		node["allowed_networks"].([]interface{})[0])
 
 	nodev, err := conn.GetNodeValue("ssh", "allowed_networks")
 	assert.NoError(t, err)
-	assert.Equal(t, "REF_DefaultInternalNetwork", nodev.([]interface{})[0])
+	assert.Equal(t, "REF_NetworkAny", nodev.([]interface{})[0])
 
-	paths, err := conn.GetAffectedNodes("REF_DefaultInternalNetwork")
+	paths, err := conn.GetAffectedNodes("REF_NetworkAny")
 	assert.NoError(t, err)
 	assert.Contains(t, paths, NodePath{"ssh", "allowed_networks"})
 

@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// DefaultTimeout confd workers will kill the process after 60 seconds
-const defaultTimeout = time.Second * 60
+// DefaultTimeout confd workers will kill the process after 10 seconds
+const defaultTimeout = time.Second * 10
 
 // DefaultFacility system can only be used for local connections
 const defaultFacility = "system"

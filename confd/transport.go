@@ -6,6 +6,7 @@ package confd
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -49,7 +50,8 @@ func (t *tcpTransport) RoundTrip(req *http.Request) (resp *http.Response, err er
 	defer t.mu.Unlock()
 	// send to remote side and recieve response
 	if t.conn == nil {
-		panic("Called conf.tcpTransport.RoundTrip without being connected!")
+		return nil, fmt.Errorf("Called confd.tcpTransport.RoundTrip " +
+			"without being connected!")
 	}
 	err = t.conn.SetDeadline(time.Now().Add(t.Timeout))
 	if err != nil {
@@ -77,12 +79,12 @@ func (t *tcpTransport) IsConnected() bool {
 
 // Close the transport
 func (t *tcpTransport) Close() (err error) {
-	if !t.IsConnected() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conn == nil {
 		return // we already disconnected
 	}
-	t.mu.Lock()
 	err = t.conn.Close()
 	t.conn = nil
-	t.mu.Unlock()
 	return
 }

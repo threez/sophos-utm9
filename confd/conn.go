@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -15,6 +16,23 @@ import (
 )
 
 var safePasswordRegexp = regexp.MustCompile(`password":"[^"]+"`)
+
+const (
+	msgConnect = iota
+	msgRequest
+	msgClose
+)
+
+type roundTripHandler func(*http.Request) (*http.Response, error)
+
+// sessionMsg is the object send to the worker goroutine
+type sessionMsg struct {
+	Type     int
+	Request  *http.Request
+	Response *http.Response
+	Error    error
+	Done     chan bool
+}
 
 // BUG(threez) It currently requires to connect directly to the confd database.
 // This can be done by connecting through an ssh tunnel and forward the port
@@ -24,17 +42,16 @@ var safePasswordRegexp = regexp.MustCompile(`password":"[^"]+"`)
 
 // Conn is the confd connection object
 type Conn struct {
-	URL     *url.URL    // URL that the connection connects to
-	Logger  *log.Logger // Logger if specified, will log confd actions
-	Options *Options    // Options represent connection options
-	id      struct {
+	Transport Transport
+	URL       *url.URL    // URL that the connection connects to
+	Logger    *log.Logger // Logger if specified, will log confd actions
+	Options   *Options    // Options represent connection options
+	id        struct {
 		Value      uint64 // json rpc counter
 		sync.Mutex        // prevent double counting
 	}
-	Transport Transport
-	txMu      sync.Mutex // prevent multiple write/read transactions
-	sessionMu sync.Mutex // prevent multiple connections
-	requestMu sync.Mutex // prevent concurrent confd access
+	txMu  sync.Mutex // prevent multiple write/read transactions
+	queue chan *sessionMsg
 }
 
 // NewConn creates a new confd connection (is not acually connecting)
@@ -49,7 +66,12 @@ func NewConn(URL string) (conn *Conn, err error) {
 		Logger:    nil,
 		Options:   newOptions(u),
 		Transport: &tcpTransport{Timeout: defaultTimeout},
+		queue:     make(chan *sessionMsg),
 	}
+
+	// FIXME: will never be cleared by now.
+	go conn.run()
+
 	return
 }
 
@@ -90,13 +112,7 @@ func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{},
 
 // Request allows to send request with typed (parsed with json) responses
 func (c *Conn) Request(method string, result interface{}, params ...interface{}) (err error) {
-	// make sure we have a connection to the server
-	err = c.Connect()
-	if err != nil {
-		return
-	}
-
-	err = c.request(method, result, params...)
+	err = c.request(c.queuedExecution, method, result, params...)
 
 	// automatic error handling
 	if err == ErrEmptyResponse || err == ErrReturnCode {
@@ -118,29 +134,30 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 // Connect creates a new confd session by calling new and get_SID confd calls.
 // It is preffered to not use the call and create sessions if requests are made
 func (c *Conn) Connect() (err error) {
-	if c.Transport.IsConnected() {
-		return
-	}
-	c.sessionMu.Lock()
-	defer c.sessionMu.Unlock()
 	c.logf("Connect to %s", c.safeURL())
-	err = c.Transport.Connect(c.URL)
-	if err != nil {
-		c.logf("Unable to connect %s", err)
-		return
-	}
-	err = c.request("new", nil, c.Options)
-	if err == nil && c.Options.SID == nil {
-		// if we got a sid we will use it next time
-		err = c.request("get_SID", &c.Options.SID)
-	}
-	if err != nil {
-		c.logf("Unable to create session %v", err)
-	}
-	return
+	msg := sessionMsg{Type: msgConnect, Done: make(chan bool)}
+	c.queue <- &msg
+	<-msg.Done // Wait until request was processed
+	return msg.Error
 }
 
-func (c *Conn) request(method string, result interface{}, params ...interface{}) error {
+// Close the confd connection
+func (c *Conn) Close() (err error) {
+	c.logf("Disconnect from %s", c.safeURL())
+	_ = c.request(c.directExecuton, "detach", nil) // ignore if we can't detach
+	msg := sessionMsg{Type: msgClose, Done: make(chan bool)}
+	c.queue <- &msg
+	<-msg.Done // Wait until request was processed
+	return msg.Error
+}
+
+func (c *Conn) request(handler roundTripHandler, method string, result interface{}, params ...interface{}) error {
+	// make sure we are connected
+	err := c.connect()
+	if err != nil {
+		return err
+	}
+
 	// request
 	r, err := newRequest(method, params, c.nextID())
 	if err != nil {
@@ -153,12 +170,8 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 	}
 
 	// send request
-	c.requestMu.Lock()
-	defer c.requestMu.Unlock()
-	resp, err := c.Transport.RoundTrip(req)
+	resp, err := handler(req)
 	if err != nil {
-		// send receive operation failed, conenction will be closed
-		_ = c.Transport.Close() // ignore close errors
 		return err
 	}
 
@@ -177,15 +190,47 @@ func (c *Conn) request(method string, result interface{}, params ...interface{})
 	return nil
 }
 
-// Close the confd connection
-func (c *Conn) Close() (err error) {
-	if c.Transport.IsConnected() {
-		c.sessionMu.Lock()
-		defer c.sessionMu.Unlock()
-		c.logf("Disconnect from %s", c.safeURL())
-		_ = c.request("detach", nil) // ignore if we can't detach
-		_ = c.Transport.Close()      // ignore close errors
+func (c *Conn) run() {
+	for msg := range c.queue {
+		switch msg.Type {
+		case msgConnect:
+			msg.Error = c.connect()
+		case msgRequest:
+			msg.Response, msg.Error = c.directExecuton(msg.Request)
+		case msgClose:
+			msg.Error = c.close()
+		}
+		if msg.Done != nil {
+			msg.Done <- true
+		}
 	}
+}
+
+// Connect creates a new confd session by calling new and get_SID confd calls.
+// It is preffered to not use the call and create sessions if requests are made
+func (c *Conn) connect() (err error) {
+	if c.Transport.IsConnected() {
+		return
+	}
+	err = c.Transport.Connect(c.URL)
+	if err != nil {
+		c.logf("Unable to connect %s", err)
+		return
+	}
+	err = c.request(c.directExecuton, "new", nil, c.Options)
+	if err == nil && c.Options.SID == nil {
+		// if we got a sid we will use it next time
+		err = c.request(c.directExecuton, "get_SID", &c.Options.SID)
+	}
+	if err != nil {
+		c.logf("Unable to create session %v", err)
+	}
+	return
+}
+
+// Close the confd connection
+func (c *Conn) close() (err error) {
+	_ = c.Transport.Close() // ignore close errors
 	return
 }
 
@@ -205,6 +250,26 @@ func (c *Conn) safeURL() string {
 		return strings.Replace(c.URL.String(), c.Options.Password, "********", 1)
 	}
 	return c.URL.String()
+}
+
+func (c *Conn) queuedExecution(req *http.Request) (*http.Response, error) {
+	msg := sessionMsg{Type: msgRequest, Request: req, Done: make(chan bool)}
+	c.queue <- &msg
+	<-msg.Done // Wait until request was processed
+
+	if msg.Error != nil {
+		return nil, msg.Error
+	}
+	return msg.Response, nil
+}
+
+func (c *Conn) directExecuton(req *http.Request) (*http.Response, error) {
+	resp, err := c.Transport.RoundTrip(req)
+	// send receive operation failed, connection will be closed
+	if err != nil {
+		_ = c.close() // ignore close errors
+	}
+	return resp, err
 }
 
 func (c *Conn) nextID() uint64 {
