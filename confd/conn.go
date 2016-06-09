@@ -21,6 +21,7 @@ const (
 	msgConnect = iota
 	msgRequest
 	msgClose
+	msgQuit
 )
 
 type roundTripHandler func(*http.Request) (*http.Response, error)
@@ -50,8 +51,12 @@ type Conn struct {
 		Value      uint64 // json rpc counter
 		sync.Mutex        // prevent double counting
 	}
-	txMu  sync.Mutex // prevent multiple write/read transactions
-	queue chan *sessionMsg
+	txMu   sync.Mutex // prevent multiple write/read transactions
+	queue  chan *sessionMsg
+	worker struct {
+		refs uint64 // counts the references to the worker
+		sync.RWMutex
+	}
 }
 
 // NewConn creates a new confd connection (is not acually connecting)
@@ -68,9 +73,6 @@ func NewConn(URL string) (conn *Conn, err error) {
 		Transport: &tcpTransport{Timeout: defaultTimeout},
 		queue:     make(chan *sessionMsg),
 	}
-
-	// FIXME: will never be cleared by now.
-	go conn.run()
 
 	return
 }
@@ -112,6 +114,8 @@ func (c *Conn) SimpleRequest(method string, params ...interface{}) (interface{},
 
 // Request allows to send request with typed (parsed with json) responses
 func (c *Conn) Request(method string, result interface{}, params ...interface{}) (err error) {
+	c.requireWorker()
+	defer c.releaseWorker()
 	err = c.request(c.queuedExecution, method, result, params...)
 
 	// automatic error handling
@@ -134,6 +138,8 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 // Connect creates a new confd session by calling new and get_SID confd calls.
 // It is preffered to not use the call and create sessions if requests are made
 func (c *Conn) Connect() (err error) {
+	c.requireWorker()
+	defer c.releaseWorker()
 	c.logf("Connect to %s", c.safeURL())
 	msg := sessionMsg{Type: msgConnect, Done: make(chan bool)}
 	c.queue <- &msg
@@ -143,6 +149,8 @@ func (c *Conn) Connect() (err error) {
 
 // Close the confd connection
 func (c *Conn) Close() (err error) {
+	c.requireWorker()
+	defer c.releaseWorker()
 	c.logf("Disconnect from %s", c.safeURL())
 	_ = c.request(c.queuedExecution, "detach", nil) // ignore if we can't detach
 	msg := sessionMsg{Type: msgClose, Done: make(chan bool)}
@@ -190,20 +198,56 @@ func (c *Conn) request(handler roundTripHandler, method string, result interface
 	return nil
 }
 
+// run is the worker function, that does real work, all transport stuff (confd)
+// interactions should be serialized though this worker. the function will
+// spin up and down as work is required to be done
 func (c *Conn) run() {
-	for msg := range c.queue {
-		switch msg.Type {
-		case msgConnect:
-			msg.Error = c.connect()
-		case msgRequest:
-			msg.Response, msg.Error = c.directExecution(msg.Request)
-		case msgClose:
-			msg.Error = c.close()
-		}
-		if msg.Done != nil {
-			msg.Done <- true
+	var end chan bool
+	running := true
+	for running {
+		select {
+		case msg := <-c.queue:
+			switch msg.Type {
+			case msgConnect:
+				msg.Error = c.connect()
+			case msgRequest:
+				msg.Response, msg.Error = c.directExecution(msg.Request)
+			case msgClose:
+				msg.Error = c.close()
+			case msgQuit:
+				end = msg.Done
+				running = false // stop the worker
+				continue        // skip done inside the loop
+			}
+			if msg.Done != nil {
+				msg.Done <- true
+			}
 		}
 	}
+	end <- true
+}
+
+// requireWorker increments the worker references and starts the worker if
+// the refs is at 0
+func (c *Conn) requireWorker() {
+	c.worker.Lock()
+	if c.worker.refs == 0 {
+		go c.run()
+	}
+	c.worker.refs++
+	c.worker.Unlock()
+}
+
+// releaseWorker decrements the worker references and quits the worker at 0 refs
+func (c *Conn) releaseWorker() {
+	c.worker.Lock()
+	c.worker.refs--
+	if c.worker.refs == 0 {
+		msg := sessionMsg{Type: msgQuit, Done: make(chan bool)}
+		c.queue <- &msg
+		<-msg.Done // Wait until request was processed
+	}
+	c.worker.Unlock()
 }
 
 // Connect creates a new confd session by calling new and get_SID confd calls.
