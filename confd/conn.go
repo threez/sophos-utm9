@@ -144,7 +144,7 @@ func (c *Conn) Connect() (err error) {
 // Close the confd connection
 func (c *Conn) Close() (err error) {
 	c.logf("Disconnect from %s", c.safeURL())
-	_ = c.request(c.directExecuton, "detach", nil) // ignore if we can't detach
+	_ = c.request(c.queuedExecution, "detach", nil) // ignore if we can't detach
 	msg := sessionMsg{Type: msgClose, Done: make(chan bool)}
 	c.queue <- &msg
 	<-msg.Done // Wait until request was processed
@@ -196,7 +196,7 @@ func (c *Conn) run() {
 		case msgConnect:
 			msg.Error = c.connect()
 		case msgRequest:
-			msg.Response, msg.Error = c.directExecuton(msg.Request)
+			msg.Response, msg.Error = c.directExecution(msg.Request)
 		case msgClose:
 			msg.Error = c.close()
 		}
@@ -217,10 +217,10 @@ func (c *Conn) connect() (err error) {
 		c.logf("Unable to connect %s", err)
 		return
 	}
-	err = c.request(c.directExecuton, "new", nil, c.Options)
+	err = c.request(c.directExecution, "new", nil, c.Options)
 	if err == nil && c.Options.SID == nil {
 		// if we got a sid we will use it next time
-		err = c.request(c.directExecuton, "get_SID", &c.Options.SID)
+		err = c.request(c.directExecution, "get_SID", &c.Options.SID)
 	}
 	if err != nil {
 		c.logf("Unable to create session %v", err)
@@ -263,7 +263,7 @@ func (c *Conn) queuedExecution(req *http.Request) (*http.Response, error) {
 	return msg.Response, nil
 }
 
-func (c *Conn) directExecuton(req *http.Request) (*http.Response, error) {
+func (c *Conn) directExecution(req *http.Request) (*http.Response, error) {
 	resp, err := c.Transport.RoundTrip(req)
 	// send receive operation failed, connection will be closed
 	if err != nil {
