@@ -43,11 +43,12 @@ type sessionMsg struct {
 
 // Conn is the confd connection object
 type Conn struct {
-	Transport Transport
-	URL       *url.URL    // URL that the connection connects to
-	Logger    *log.Logger // Logger if specified, will log confd actions
-	Options   *Options    // Options represent connection options
-	id        struct {
+	Transport              Transport
+	AutomaticErrorHandling bool
+	URL                    *url.URL    // URL that the connection connects to
+	Logger                 *log.Logger // Logger if specified, will log confd actions
+	Options                *Options    // Options represent connection options
+	id                     struct {
 		Value      uint64 // json rpc counter
 		sync.Mutex        // prevent double counting
 	}
@@ -72,6 +73,7 @@ func NewConn(URL string) (conn *Conn, err error) {
 		Options:   newOptions(u),
 		Transport: &tcpTransport{Timeout: defaultTimeout},
 		queue:     make(chan *sessionMsg),
+		AutomaticErrorHandling: true,
 	}
 
 	return
@@ -119,7 +121,9 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	err = c.request(c.queuedExecution, method, result, params...)
 
 	// automatic error handling
-	if err == ErrEmptyResponse || err == ErrReturnCode {
+	if c.AutomaticErrorHandling &&
+		(err == ErrEmptyResponse || err == ErrReturnCode) {
+		c.logf("!! Started automatic error handling because of: %s", err)
 		errs, errl := c.ErrList()
 		if errl != nil {
 			return errl
@@ -185,15 +189,17 @@ func (c *Conn) request(handler roundTripHandler, method string, result interface
 
 	// decode response
 	respObj, err := newResponse(resp.Body)
-	if err != nil {
-		return err
+	if respObj != nil {
+		c.logf("<= %v", respObj)
 	}
-	err = respObj.Decode(result, method != "get_SID")
 	if err != nil {
 		return err
 	}
 
-	c.logf("<= %v", respObj)
+	err = respObj.Decode(result, method != "get_SID")
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

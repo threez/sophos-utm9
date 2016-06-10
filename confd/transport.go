@@ -55,18 +55,25 @@ func (t *tcpTransport) RoundTrip(req *http.Request) (resp *http.Response, err er
 	}
 	err = t.conn.SetDeadline(time.Now().Add(t.Timeout))
 	if err != nil {
-		return
+		goto err
 	}
 
 	err = req.Write(t.conn)
 	if err != nil {
-		return
+		goto err
 	}
 
 	// read response
 	resp, err = http.ReadResponse(bufio.NewReader(t.conn), nil)
 	t.LastRequest = time.Now()
+	if err != nil {
+		goto err
+	}
 
+	return
+err:
+	// close the connection on transport errors, so that we require a reconnect
+	_ = t.close() // ignore errors
 	return
 }
 
@@ -84,6 +91,11 @@ func (t *tcpTransport) Close() (err error) {
 	if t.conn == nil {
 		return // we already disconnected
 	}
+	return t.close()
+}
+
+// close the connection
+func (t *tcpTransport) close() (err error) {
 	err = t.conn.Close()
 	t.conn = nil
 	return

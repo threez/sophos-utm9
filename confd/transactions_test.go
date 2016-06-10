@@ -55,3 +55,11 @@ func TestWriteRollbackTransactions(t *testing.T) {
 	err = wtx.Rollback()
 	assert.NoError(t, err)
 }
+
+func TestWriteTransactionError(t *testing.T) {
+	conn := connHelper()
+	defer func() { _ = conn.Close() }()
+
+	_, err := conn.BeginWriteTransaction()
+	assert.Error(t, err)
+}
