@@ -5,7 +5,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -232,6 +234,48 @@ func (a *SwaggerAPI) MakeResty(obj confd.AnyObject) map[string]interface{} {
 	return data
 }
 
+func (api *ObjectAPI) decodeConfdObject(obj *confd.AnyObject, r io.ReadCloser, classname, typename string) error {
+	defer r.Close()
+	obj.Class = classname
+	obj.Type = typename
+	obj.Data = make(map[string]interface{})
+
+	var data map[string]interface{}
+
+	dec := json.NewDecoder(r)
+	err := dec.Decode(&data)
+
+	if err != nil {
+		return err
+	}
+
+	// make bool values more friendly to the user
+	for key, value := range data {
+		definition := api.Meta[obj.Class][obj.Type][key]
+		if definition.ISA == "BOOL" {
+			if value == true {
+				obj.Data[key] = 1
+			} else {
+				obj.Data[key] = 0
+			}
+			continue
+		}
+
+		if key == "_ref" {
+			obj.Ref = fmt.Sprintf("%s", value)
+			continue
+		}
+
+		if key == "_locked" {
+			obj.Lock = confd.Bool(value.(bool))
+			continue
+		}
+
+		obj.Data[key] = value
+	}
+	return nil
+}
+
 // prebuildSwaggerSpecs returns the swagger specs for all classes
 func (a *SwaggerAPI) prebuildSwaggerSpecs() (map[string]*Swagger, error) {
 	var classes []string
@@ -266,7 +310,7 @@ func (a *SwaggerAPI) buildSwagger(class string) (*Swagger, error) {
 		return nil, err
 	}
 	for _, classType := range classTypes {
-		tpath := fmt.Sprintf("/objects/%s/%s", class, classType)
+		tpath := fmt.Sprintf("/objects/%s/%s/", class, classType)
 		objectResponses := make(map[string]*SwaggerResponse)
 		objectResponses["200"] = &SwaggerResponse{
 			Description: fmt.Sprintf("%s::%s objects", class, classType),

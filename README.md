@@ -62,4 +62,4 @@ To inspect the API start the server and surf to
 
 ## License
 
-MIT, see LICENSE file
+See LICENSE file

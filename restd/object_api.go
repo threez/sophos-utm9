@@ -5,9 +5,11 @@
 package main
 
 import (
+	"log"
+	"net/http"
+
 	"github.com/gorilla/mux"
 	"github.com/threez/sophos-utm9/confd"
-	"net/http"
 )
 
 // ObjectAPI handles all object related rest requests
@@ -18,30 +20,39 @@ type ObjectAPI struct {
 // RegisterAPI installs the api (CRUD) into the passed router.
 // It handles requests in the /objects/{class}/{type} space.
 func (api *ObjectAPI) RegisterAPI(s *mux.Router) {
-	objAPI := s.PathPrefix("/objects/{class}/{type}")
+	prefix := s.PathPrefix("/objects/{class}/{type}").Subrouter()
 
 	// CREATE
-	create := objAPI.Methods("POST").Subrouter()
-	create.HandleFunc("/", withConfdConnection(api.PostObject)).Name("createObject")
+	prefix.HandleFunc("/", withConfdConnection(api.PostObject)).
+		Methods("POST").
+		Name("createObject")
 
 	// READ
-	read := objAPI.Methods("GET").Subrouter()
-	read.HandleFunc("/REF_{ref}", withConfdConnection(api.Get)).Name("getObject")
-	read.HandleFunc("/", withConfdConnection(api.GetAll)).Name("getAllObject")
+	prefix.HandleFunc("/REF_{ref}", withConfdConnection(api.Get)).
+		Methods("GET").
+		Name("getObject")
+	prefix.HandleFunc("/", withConfdConnection(api.GetAll)).
+		Methods("GET").
+		Name("getAllObject")
 
 	// UPDATE
-	objAPI.Methods("PUT").Subrouter().
-		HandleFunc("/REF_{ref}", withConfdConnection(api.PutObject)).Name("putObject")
-	objAPI.Methods("PATCH").Subrouter().
-		HandleFunc("/REF_{ref}", withConfdConnection(api.PatchObject)).Name("patchObject")
-	objAPI.Methods("LOCK").Subrouter().
-		HandleFunc("/REF_{ref}", withConfdConnection(api.LockObject)).Name("lockObject")
-	objAPI.Methods("UNLOCK").Subrouter().
-		HandleFunc("/REF_{ref}", withConfdConnection(api.UnlockObject)).Name("unlockObject")
+	prefix.HandleFunc("/REF_{ref}", withConfdConnection(api.PutObject)).
+		Methods("PUT").
+		Name("putObject")
+	prefix.HandleFunc("/REF_{ref}", withConfdConnection(api.PatchObject)).
+		Methods("PATCH").
+		Name("patchObject")
+	prefix.HandleFunc("/REF_{ref}", withConfdConnection(api.LockObject)).
+		Methods("LOCK").
+		Name("lockObject")
+	prefix.HandleFunc("/REF_{ref}", withConfdConnection(api.UnlockObject)).
+		Methods("UNLOCK").
+		Name("unlockObject")
 
 	// DELETE
-	delete := objAPI.Methods("DELETE").Subrouter()
-	delete.HandleFunc("/REF_{ref}", withConfdConnection(api.DeleteObject)).Name("deleteObject")
+	prefix.HandleFunc("/REF_{ref}", withConfdConnection(api.DeleteObject)).
+		Methods("DELETE").
+		Name("deleteObject")
 }
 
 // GetAll handles collection requests (GET /class/type)
@@ -53,6 +64,7 @@ func (api *ObjectAPI) GetAll(w http.ResponseWriter, r *http.Request, conn *confd
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		respondJSON(err, w, r)
 		return
 	}
 	dataArr := make([]map[string]interface{}, len(values))
@@ -61,33 +73,60 @@ func (api *ObjectAPI) GetAll(w http.ResponseWriter, r *http.Request, conn *confd
 		dataArr[i] = api.MakeResty(value)
 	}
 
+	w.WriteHeader(http.StatusOK)
 	respondJSON(dataArr, w, r)
 }
 
 // PostObject handles object creation (POST /class/type)
 func (api *ObjectAPI) PostObject(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
-	w.WriteHeader(http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	var obj confd.AnyObject
+
+	err := api.decodeConfdObject(&obj, r.Body, vars["class"], vars["type"])
+
+	if err != nil {
+		log.Printf("[ObjectAPI] Decoding reuqest body failed: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	ref, err := conn.SetObject(obj, true)
+	if err != nil {
+		log.Printf("[ObjectAPI] Create %+v failed: %s", obj, err)
+		w.WriteHeader(http.StatusBadRequest)
+		respondJSON(err, w, r)
+		return
+	}
+	log.Printf("[ObjectAPI] Created object %s", ref)
+	w.WriteHeader(http.StatusCreated)
 }
 
 // Get handles single object requests (GET /class/type/REF_XXX)
 func (api *ObjectAPI) Get(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
 	vars := mux.Vars(r)
 	var value confd.AnyObject
+	ref := "REF_" + vars["ref"]
 
-	err := conn.GetObject("REF_"+vars["ref"], &value)
+	err := conn.GetObject(ref, &value)
 
 	if err != nil {
 		// if we receive an error here, most likely the REF doesn't exist.
+		log.Printf("[ObjectAPI] Get %s failed: %s", ref, err)
 		w.WriteHeader(http.StatusNotFound)
+		respondJSON(err, w, r)
 		return
 	}
 
 	if value.Class != vars["class"] || value.Type != vars["type"] {
 		// there is an object, but it's from a different class, signal the error
+		log.Printf("[ObjectAPI] Returning not found since wrong type %s/%s",
+			value.Class, value.Type)
 		w.WriteHeader(http.StatusNotFound)
+		respondJSON(err, w, r)
 		return
 	}
 
+	w.WriteHeader(http.StatusOK)
 	respondJSON(api.MakeResty(value), w, r)
 }
 
@@ -110,7 +149,17 @@ func (api *ObjectAPI) PatchObject(w http.ResponseWriter, r *http.Request, conn *
 // This call doesn't validate the correctness of class and type for performance
 // reasons.
 func (api *ObjectAPI) DeleteObject(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
-	w.WriteHeader(http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	ref := "REF_" + vars["ref"]
+
+	_, err := conn.DelObject(ref)
+	if err != nil {
+		log.Printf("[ObjectAPI] Deleting %s failed: %s", ref, err)
+		w.WriteHeader(http.StatusNotFound)
+		respondJSON(err, w, r)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // LockObject sets the objects lock state to locked, then it can't be modified
@@ -118,7 +167,17 @@ func (api *ObjectAPI) DeleteObject(w http.ResponseWriter, r *http.Request, conn 
 // This call doesn't validate the correctness of class and type for performance
 // reasons.
 func (api *ObjectAPI) LockObject(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
-	w.WriteHeader(http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	ref := "REF_" + vars["ref"]
+
+	err := conn.LockObject(ref)
+	if err != nil {
+		log.Printf("[ObjectAPI] Locking %s failed: %s", ref, err)
+		w.WriteHeader(http.StatusNotFound)
+		respondJSON(err, w, r)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // UnlockObject sets the objects lock state to unlocked, then it can be modified
@@ -126,5 +185,15 @@ func (api *ObjectAPI) LockObject(w http.ResponseWriter, r *http.Request, conn *c
 // This call doesn't validate the correctness of class and type for performance
 // reasons.
 func (api *ObjectAPI) UnlockObject(w http.ResponseWriter, r *http.Request, conn *confd.Conn) {
-	w.WriteHeader(http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	ref := "REF_" + vars["ref"]
+
+	err := conn.UnlockObject(ref)
+	if err != nil {
+		log.Printf("[ObjectAPI] Unlocking %s failed: %s", ref, err)
+		w.WriteHeader(http.StatusNotFound)
+		respondJSON(err, w, r)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
