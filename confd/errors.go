@@ -6,6 +6,7 @@ package confd
 
 import (
 	"fmt"
+	"strings"
 )
 
 // ErrDescription is returned by ErrList* functions and details the occured
@@ -27,7 +28,18 @@ type ErrDescription struct {
 	Fatal            Bool     `json:"fatal"`
 }
 
-func (e *ErrDescription) Error() string {
+// ErrList contains a list of error descriptions
+type ErrList []ErrDescription
+
+func (e ErrList) Error() string {
+	errStr := make([]string, len(e))
+	for i, error := range e {
+		errStr[i] = error.Error()
+	}
+	return strings.Join(errStr, " and ")
+}
+
+func (e ErrDescription) Error() string {
 	if bool(e.Fatal) {
 		return fmt.Sprintf("FATAL [%s] %s", e.MessageType, e.Name)
 	}
@@ -37,7 +49,7 @@ func (e *ErrDescription) Error() string {
 // ErrAck add some error context patterns to the list of acknowledged errors.
 // These errors will be ignored during the next public method call or for the
 // time of the transaction.
-func (c *Conn) ErrAck(errs []ErrDescription) error {
+func (c *Conn) ErrAck(errs ErrList) error {
 	return c.Request("err_ack", nil, errs)
 }
 
@@ -75,24 +87,24 @@ func (c *Conn) ErrIsNoack() (uint64, error) {
 
 // ErrList lists the errors that occurred since the last write transaction, or,
 // when not in transaction, during the last transanction.
-func (c *Conn) ErrList() ([]ErrDescription, error) {
-	var errors []ErrDescription
+func (c *Conn) ErrList() (ErrList, error) {
+	var errors ErrList
 	err := c.Request("err_list", &errors)
 	return errors, err
 }
 
 // ErrListFatal lists all fatal errors that occurred since the last write
 // transaction, or, when not in transaction, during the last transanction.
-func (c *Conn) ErrListFatal() ([]ErrDescription, error) {
-	var errors []ErrDescription
+func (c *Conn) ErrListFatal() (ErrList, error) {
+	var errors ErrList
 	err := c.Request("err_list_fatal", &errors)
 	return errors, err
 }
 
 // ErrListNoAck lists unacknowledged errors that occurred since the last write
 // transaction, or, when not in transaction, during the last transanction.
-func (c *Conn) ErrListNoAck() ([]ErrDescription, error) {
-	var errors []ErrDescription
+func (c *Conn) ErrListNoAck() (ErrList, error) {
+	var errors ErrList
 	err := c.Request("err_list_noack", &errors)
 	return errors, err
 }

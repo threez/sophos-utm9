@@ -5,7 +5,6 @@
 package confd
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -124,12 +123,12 @@ func (c *Conn) Request(method string, result interface{}, params ...interface{})
 	if c.AutomaticErrorHandling &&
 		(err == ErrEmptyResponse || err == ErrReturnCode) {
 		c.logf("!! Started automatic error handling because of: %s", err)
-		errs, errl := c.ErrList()
-		if errl != nil {
-			return errl
+		errList, errCmd := c.ErrList()
+		if errCmd != nil {
+			return errCmd
 		}
-		if len(errs) > 0 {
-			return errors.New(errs[0].Error())
+		if len(errList) > 0 {
+			return errList
 		}
 	}
 
