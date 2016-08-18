@@ -1,0 +1,39 @@
+hash: d2fe907240f8874da0a61d4b692606fec98c9e86b6f1a8fd8c9c40a1330efe07
+updated: 2016-08-18T09:53:21.280239499+02:00
+imports:
+- name: github.com/codegangsta/inject
+  version: 33e0aa1cb7c019ccc3fbe049a8262a6403d30504
+- name: github.com/codegangsta/negroni
+  version: 6edff56736fa7bd546812f149e8cdaae61e5a38f
+- name: github.com/go-martini/martini
+  version: c257c412d547ac70fcaf5596c1a50a7cb832c1fc
+- name: github.com/goji/param
+  version: 0b4aa9fcd96f890c0ae685fc425d85b80a7bed52
+- name: github.com/gorilla/context
+  version: 08b5f424b9271eedf6f9f0ce86cb9396ed337a42
+- name: github.com/gorilla/mux
+  version: cf79e51a62d8219d52060dfc1b4e810414ba2d15
+- name: github.com/justinas/alice
+  version: 43e429cd03e6faac34faf94153cfb7a5adb6b928
+- name: github.com/martini-contrib/render
+  version: ec18f8345a1181146728238980606fb1d6f40e8c
+- name: github.com/oxtoacart/bpool
+  version: 4e1c5567d7c2dd59fa4c7c83d34c2f3528b025d6
+- name: github.com/rs/cors
+  version: a62a804a8a009876ca59105f7899938a1349f4b3
+- name: github.com/rs/xhandler
+  version: ed27b6fd65218132ee50cd95f38474a3d8a2cd12
+- name: github.com/zenazn/goji
+  version: 64eb34159fe53473206c2b3e70fe396a639452f2
+  subpackages:
+  - bind
+  - graceful
+  - web
+  - web/middleware
+  - graceful/listener
+  - web/mutil
+- name: golang.org/x/net
+  version: 07b51741c1d6423d4a6abab1c49940ec09cb1aaf
+  subpackages:
+  - context
+devImports: []
