@@ -63,14 +63,15 @@ func (c *Conn) GetAllObjects() ([]AnyObject, error) {
 
 // LockObject sets the lockstate of the object to locked
 func (c *Conn) LockObject(ref string) error {
-	_, err := c.SimpleRequest("lock_object", ref)
+	_, err := c.SimpleRequest("lock_object", ref, "user")
 	return err
 }
 
 // UnlockObject sets the lockstate of the object to unlocked
 func (c *Conn) UnlockObject(ref string) error {
-	_, err :=
-		c.SimpleRequest("lock_object", ref, BoolValue(false))
+	_, _ = c.SimpleRequest("lock_override", 1)
+	_, err := c.SimpleRequest("lock_object", ref, BoolValue(false))
+	_, _ = c.SimpleRequest("lock_override", 0)
 	return err
 }
 
