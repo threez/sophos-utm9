@@ -11,7 +11,7 @@ type ObjectMeta struct {
 	Type     string `json:"type,omitempty"`
 	Nodel    string `json:"nodel,omitempty"`
 	Hidden   Bool   `json:"hidden"`
-	Lock     Bool   `json:"lock"`
+	Lock     string `json:"lock,omitempty"`
 	Autoname Bool   `json:"autoname"`
 }
 
