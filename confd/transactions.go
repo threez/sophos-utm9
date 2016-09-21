@@ -20,6 +20,7 @@ func (c *Conn) BeginReadTransaction() (Transaction, error) {
 	c.txMu.Lock()
 	_, err := c.SimpleRequest("freeze")
 	if err != nil {
+		c.txMu.Unlock()
 		return nil, err
 	}
 	return &readTransaction{c}, nil
@@ -30,6 +31,7 @@ func (c *Conn) BeginWriteTransaction() (Transaction, error) {
 	c.txMu.Lock()
 	_, err := c.SimpleRequest("lock")
 	if err != nil {
+		c.txMu.Unlock()
 		return nil, err
 	}
 	return &writeTransaction{c}, nil
