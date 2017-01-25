@@ -17,10 +17,11 @@ type readTransaction struct{ *Conn }
 
 // BeginReadTransaction starts new read transaction
 func (c *Conn) BeginReadTransaction() (Transaction, error) {
-	c.txMu.Lock()
+	mutex := c.txMu
+	mutex.Lock()
 	_, err := c.SimpleRequest("freeze")
 	if err != nil {
-		c.txMu.Unlock()
+		mutex.Unlock()
 		return nil, err
 	}
 	return &readTransaction{c}, nil
@@ -28,10 +29,11 @@ func (c *Conn) BeginReadTransaction() (Transaction, error) {
 
 // BeginWriteTransaction starts new write transaction
 func (c *Conn) BeginWriteTransaction() (Transaction, error) {
-	c.txMu.Lock()
+	mutex := c.txMu
+	mutex.Lock()
 	_, err := c.SimpleRequest("lock")
 	if err != nil {
-		c.txMu.Unlock()
+		mutex.Unlock()
 		return nil, err
 	}
 	return &writeTransaction{c}, nil
