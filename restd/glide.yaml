@@ -1,6 +1,0 @@
-package: github.com/threez/sophos-utm9/restd
-import:
-- package: github.com/codegangsta/negroni
-- package: github.com/gorilla/mux
-- package: github.com/rs/cors
-
