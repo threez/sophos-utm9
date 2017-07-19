@@ -51,7 +51,7 @@ type Conn struct {
 		Value      uint64 // json rpc counter
 		sync.Mutex        // prevent double counting
 	}
-	txMu   sync.Mutex // prevent multiple write/read transactions
+	txMu   *sync.Mutex // prevent multiple write/read transactions
 	queue  chan *sessionMsg
 	worker struct {
 		refs uint64 // counts the references to the worker
@@ -72,6 +72,7 @@ func NewConn(URL string) (conn *Conn, err error) {
 		Options:   newOptions(u),
 		Transport: &tcpTransport{Timeout: defaultTimeout},
 		queue:     make(chan *sessionMsg),
+		txMu:      &sync.Mutex{},
 		AutomaticErrorHandling: true,
 	}
 
@@ -280,6 +281,7 @@ func (c *Conn) connect() (err error) {
 // Close the confd connection
 func (c *Conn) close() (err error) {
 	_ = c.Transport.Close() // ignore close errors
+	c.txMu = &sync.Mutex{}  // force unlocking of the transaction to prevent dead locks
 	return
 }
 
