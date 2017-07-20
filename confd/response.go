@@ -68,5 +68,8 @@ func (r *response) String() string {
 	if r.Error != nil {
 		return fmt.Sprintf("[%d] Error: %s", r.ID, *r.Error)
 	}
-	return fmt.Sprintf("[%d] Result: %s", r.ID, *r.Result)
+	if r.Result != nil {
+		return fmt.Sprintf("[%d] Result: %s", r.ID, *r.Result)
+	}
+	return fmt.Sprintf("[%d] Result: empty response", r.ID)
 }

@@ -19,8 +19,10 @@ func TestErr(t *testing.T) {
 	defer func() { _ = tx.Rollback() }()
 
 	conn.requireWorker()
+	// Try to delete an object that is protected/used. Deletion should throw a
+	// non-acknowledgeable fatal error.
 	err = conn.request(conn.queuedExecution, "del_object",
-		nil, "REF_DefaultInternal")
+		nil, "REF_DefaultInternalNetwork")
 	assert.Equal(t, ErrReturnCode, err)
 	conn.releaseWorker()
 
@@ -35,9 +37,10 @@ func TestErr(t *testing.T) {
 	errs, err := conn.ErrList()
 	assert.NoError(t, err)
 	assert.True(t, len(errs) > 0)
-	assert.Equal(t, "OBJECT_DELETE_PARENT_DEL", errs[0].MessageType)
+	assert.Equal(t, "OBJECT_DELETE_LOCKED", errs[0].MessageType)
 	assert.Contains(t, errs[0].Error(),
-		"Continuing will delete the latter object as well.")
+		"The interface network object 'Internal (Network)' is protected from "+
+			"deletion.")
 
 	errs, err = conn.ErrListFatal()
 	assert.NoError(t, err)
