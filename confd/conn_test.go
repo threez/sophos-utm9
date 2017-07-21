@@ -5,12 +5,12 @@
 package confd
 
 import (
-	"errors"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func connHelper() *Conn {
@@ -44,8 +44,8 @@ func TestInvalidCmd(t *testing.T) {
 	conn := connHelper()
 	_, err := conn.SimpleRequest("foobar")
 	assert.Error(t, err)
-	assert.Equal(t, err, errors.New("FATAL [FUNCTION_UNKNOWN] No public "+
-		"function 'foobar' is provided by this Confd."))
+	assert.Equal(t, err.Error(), "FATAL [FUNCTION_UNKNOWN] No public "+
+		"function 'foobar' is provided by this Confd.")
 }
 
 func TestSafeURL(t *testing.T) {

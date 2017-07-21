@@ -14,19 +14,21 @@ func TestNode(t *testing.T) {
 	conn := systemConnHelper()
 	defer func() { _ = conn.Close() }()
 
+	var validInterfaces = []string{"REF_NetNet100008", "REF_NetworkAny"}
+
 	node, err := conn.GetNode("ssh")
 	assert.NoError(t, err)
 	assert.Equal(t, float64(22), node["port"])
-	assert.Equal(t, "REF_NetworkAny",
+	assert.Contains(t, validInterfaces,
 		node["allowed_networks"].([]interface{})[0])
 
 	nodev, err := conn.GetNodeValue("ssh", "allowed_networks")
 	assert.NoError(t, err)
-	assert.Equal(t, "REF_NetworkAny", nodev.([]interface{})[0])
+	assert.Contains(t, validInterfaces, nodev.([]interface{})[0])
 
 	paths, err := conn.GetAffectedNodes("REF_NetworkAny")
 	assert.NoError(t, err)
-	assert.Contains(t, paths, NodePath{"ssh", "allowed_networks"})
+	assert.Contains(t, paths, NodePath{"epp", "allowed_networks"})
 
 	afc, err := conn.GetNode("afc")
 	assert.NoError(t, err)
